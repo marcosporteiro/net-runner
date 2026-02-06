@@ -38,6 +38,8 @@ public class Sentinel implements GameObject {
     @Builder.Default
     private double maxShield = 0;
     @Builder.Default
+    @JsonProperty("sz")
+    private int size = 1;
     @JsonProperty("vx")
     private double vx = 0;
     @Builder.Default
@@ -76,5 +78,10 @@ public class Sentinel implements GameObject {
     @Override
     public String getName() {
         return name;
+    }
+
+    @Override
+    public int getSize() {
+        return size;
     }
 }

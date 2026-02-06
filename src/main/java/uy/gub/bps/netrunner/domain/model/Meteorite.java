@@ -26,6 +26,9 @@ public class Meteorite implements GameObject {
     private boolean hasResources;
     private Ore.OreType resourceType;
     private double health;
+    @Builder.Default
+    @JsonProperty("sz")
+    private int size = 1;
 
     @Override
     public UUID getId() {
@@ -55,5 +58,10 @@ public class Meteorite implements GameObject {
     @Override
     public String getName() {
         return name;
+    }
+
+    @Override
+    public int getSize() {
+        return size;
     }
 }

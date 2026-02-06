@@ -32,9 +32,12 @@ public class GameEngineImpl implements GameEngine {
     private static final double FRICTION = 1.0;
     private static final double MAX_SPEED = 0.08;
     private static final long RESPAWN_DELAY = 3000;
-    private static final int SENTINELS_PER_PLAYER = 3;
+    private static final int SENTINELS_PER_PLAYER = 10;
     private static final long BOSS_SPAWN_INTERVAL = 300000; // 5 minutes
+    private static final long FIRE_WALL_SPAWN_INTERVAL = 600000; // 10 minutes
+    private long tickCount = 0;
     private long lastBossSpawnTime = 0;
+    private long lastFireWallSpawnTime = 0;
     private boolean staticObjectsChanged = false;
 
     // GitHub Dark Palette Symbols & Colors
@@ -76,19 +79,27 @@ public class GameEngineImpl implements GameEngine {
             spawnDataNode();
         }
 
+        // Añadir meteoritos grandes sueltos
+        for (int i = 0; i < 50; i++) {
+            spawnStandaloneMeteorite(2);
+        }
+        for (int i = 0; i < 20; i++) {
+            spawnStandaloneMeteorite(3);
+        }
+
         // Los centinelas se gestionarán dinámicamente en el update()
     }
 
     private void spawnSentinel() {
         Sentinel sentinel = Sentinel.builder()
-                .position(getRandomEmptyPosition())
+                .position(getRandomEmptyPosition(1))
                 .build();
         sentinels.put(sentinel.getId(), sentinel);
     }
 
     private void spawnSentinelBoss() {
         Sentinel boss = Sentinel.builder()
-                .position(getRandomEmptyPosition())
+                .position(getRandomEmptyPosition(3))
                 .name("NULL")
                 .symbol("Ω")
                 .color("#ff4500") // OrangeRed
@@ -96,10 +107,30 @@ public class GameEngineImpl implements GameEngine {
                 .maxHp(50)
                 .shield(10)
                 .maxShield(10)
+                .size(3)
                 .weapon(Weapon.laser()) // Boss uses LASER
                 .build();
         sentinels.put(boss.getId(), boss);
         pendingEvents.add("[#ff4500]CRITICAL_ALERT: NULL detected in sector!");
+    }
+
+    private void spawnFireWallBoss() {
+        Sentinel boss = Sentinel.builder()
+                .position(getRandomEmptyPosition(8))
+                .name("FIRE_WALL")
+                .symbol("█")
+                .color("#ff3300") // Vibrant Red-Orange for danger
+                .hp(1000)
+                .maxHp(1000)
+                .shield(300)
+                .maxShield(300)
+                .size(8)
+                .weapon(Weapon.missile()) // Massive damage
+                .vx(0.005) // Very slow
+                .vy(0.005)
+                .build();
+        sentinels.put(boss.getId(), boss);
+        pendingEvents.add("[#ff3300]SYSTEM_FAILURE: FIRE_WALL deployment detected. Brace for impact!");
     }
 
     private void spawnLargeResourceCluster(int centerX, int centerY) {
@@ -114,8 +145,8 @@ public class GameEngineImpl implements GameEngine {
                 if (px < 0 || px >= WIDTH || py < 0 || py >= HEIGHT) continue;
 
                 if (dist <= radius + 0.5) {
-                    Position pos = new Position(px, py);
-                    if (!isOccupied(pos)) {
+                    Position pos = new Position(px + 0.5, py + 0.5);
+                    if (!isOccupied(pos, 1)) {
                         boolean isInterior = dist < radius - 0.8;
                         boolean hasResources = isInterior && random.nextInt(10) < 6; // 60% chance in interior
                         
@@ -152,8 +183,8 @@ public class GameEngineImpl implements GameEngine {
             int py = (int) Math.round(centerY + oy);
             
             if (px >= 0 && px < WIDTH && py >= 0 && py < HEIGHT) {
-                Position pos = new Position(px, py);
-                if (!isOccupied(pos)) {
+                Position pos = new Position(px + 0.5, py + 0.5);
+                if (!isOccupied(pos, 1)) {
                     Ore.OreType type = selectOreType();
                     boolean hasResources = random.nextInt(10) < 3; // 30% chance (antes 20%)
                     Meteorite met = Meteorite.builder()
@@ -171,9 +202,23 @@ public class GameEngineImpl implements GameEngine {
         }
     }
 
+    private void spawnStandaloneMeteorite(int size) {
+        Position pos = getRandomEmptyPosition(size);
+        double health = size * 5.0; // Más vida
+        Meteorite met = Meteorite.builder()
+                .position(pos)
+                .symbol("#")
+                .color("#484f58")
+                .name("LARGE_METEORITE")
+                .health(health)
+                .size(size)
+                .build();
+        worldObjects.put(met.getId(), met);
+    }
+
     private void spawnDataNode() {
         DataNode node = new DataNode();
-        node.setPosition(getRandomEmptyPosition());
+        node.setPosition(getRandomEmptyPosition(1));
         worldObjects.put(node.getId(), node);
         staticObjectsChanged = true;
     }
@@ -185,7 +230,7 @@ public class GameEngineImpl implements GameEngine {
         Player player = Player.builder()
                 .id(id)
                 .name(uniqueName)
-                .position(getRandomEmptyPosition())
+                .position(getRandomEmptyPosition(1))
                 .symbol(SYMBOLS[random.nextInt(SYMBOLS.length)])
                 .color(COLORS[random.nextInt(COLORS.length)])
                 .score(0)
@@ -218,19 +263,28 @@ public class GameEngineImpl implements GameEngine {
         return players.values().stream().anyMatch(p -> p.getName().equalsIgnoreCase(name));
     }
 
-    private Position getRandomEmptyPosition() {
+    private Position getRandomEmptyPosition(int size) {
         Position pos;
         int attempts = 0;
+        double r = size / 2.0;
         do {
-            pos = new Position(random.nextInt(WIDTH), random.nextInt(HEIGHT));
+            // Posición centrada en la celda (ej. 10.5 si size=1)
+            double x = random.nextInt(Math.max(1, WIDTH - size)) + r;
+            double y = random.nextInt(Math.max(1, HEIGHT - size)) + r;
+            pos = new Position(x, y);
             attempts++;
-        } while (isOccupied(pos) && attempts < 100);
+        } while (isOccupied(pos, size) && attempts < 100);
         return pos;
     }
 
-    private boolean isOccupied(Position pos) {
-        return getNearbyObjects(pos.x(), pos.y(), 1.0).stream()
-                .anyMatch(o -> Math.abs(o.getPosition().x() - pos.x()) < 0.5 && Math.abs(o.getPosition().y() - pos.y()) < 0.5);
+    private boolean isOccupied(Position pos, int size) {
+        double threshold = (size / 2.0) + 8.0;
+        return getNearbyObjects(pos.x(), pos.y(), threshold).stream()
+                .anyMatch(o -> {
+                    double combinedHalfSize = (o.getSize() + size) / 2.0;
+                    return Math.abs(o.getPosition().x() - pos.x()) < combinedHalfSize && 
+                           Math.abs(o.getPosition().y() - pos.y()) < combinedHalfSize;
+                });
     }
 
     @Override
@@ -559,7 +613,7 @@ public class GameEngineImpl implements GameEngine {
         }
 
         if (hitPlayer.getHp() <= 0) {
-            pendingEffects.add(new VisualEffect("EXPLOSION", hitPlayer.getPosition().x(), hitPlayer.getPosition().y(), hitPlayer.getColor()));
+            pendingEffects.add(new VisualEffect("EXPLOSION", hitPlayer.getPosition().x(), hitPlayer.getPosition().y(), hitPlayer.getColor(), hitPlayer.getSize()));
             respawnPlayer(hitPlayer);
             Player shooter = players.get(shooterId);
             if (shooter != null) {
@@ -588,10 +642,14 @@ public class GameEngineImpl implements GameEngine {
 
         if (sent.getHp() <= 0) {
             sentinels.remove(sent.getId());
-            pendingEffects.add(new VisualEffect("EXPLOSION", sent.getPosition().x(), sent.getPosition().y(), sent.getColor()));
+            pendingEffects.add(new VisualEffect("EXPLOSION", sent.getPosition().x(), sent.getPosition().y(), sent.getColor(), sent.getSize()));
             
-            boolean isBoss = "NULL".equals(sent.getName());
-            if (isBoss) {
+            boolean isNull = "NULL".equals(sent.getName());
+            boolean isFireWall = "FIRE_WALL".equals(sent.getName());
+            if (isFireWall) {
+                pendingEvents.add("[#f85149]FIRE_WALL breached! System access granted.");
+                for (int i = 0; i < 20; i++) spawnOreBatch(sent.getPosition(), Ore.OreType.GOLD, 1);
+            } else if (isNull) {
                 pendingEvents.add("[#ff4500]NULL neutralized!");
                 // Drop many ores
                 for (int i = 0; i < 5; i++) spawnOreBatch(sent.getPosition(), Ore.OreType.GOLD, 1);
@@ -602,8 +660,9 @@ public class GameEngineImpl implements GameEngine {
 
             Player shooter = players.get(shooterId);
             if (shooter != null) {
-                int scoreGain = isBoss ? 5000 : 300;
-                int expGain = isBoss ? 1000 : 150;
+                boolean isAnyBoss = isNull || isFireWall;
+                int scoreGain = isAnyBoss ? 5000 : 300;
+                int expGain = isAnyBoss ? 1000 : 150;
                 shooter.setScore(shooter.getScore() + scoreGain);
                 addExperience(shooter, expGain);
             }
@@ -641,8 +700,8 @@ public class GameEngineImpl implements GameEngine {
         }
     }
 
-    private void handleExplosion(Position pos, UUID shooterId, double damage) {
-        pendingEffects.add(new VisualEffect("EXPLOSION", pos.x(), pos.y(), "#ff4500"));
+    private void handleExplosion(Position pos, UUID shooterId, double damage, String color) {
+        pendingEffects.add(new VisualEffect("EXPLOSION", pos.x(), pos.y(), color, 2));
         double explosionRadius = 2.5;
         
         List<GameObject> nearby = getNearbyObjects(pos.x(), pos.y(), explosionRadius);
@@ -667,7 +726,7 @@ public class GameEngineImpl implements GameEngine {
         if (worldObjects.remove(met.getId()) != null) {
             staticObjectsChanged = true;
         }
-        pendingEffects.add(new VisualEffect("DEBRIS", met.getPosition().x(), met.getPosition().y(), met.getColor()));
+        pendingEffects.add(new VisualEffect("DEBRIS", met.getPosition().x(), met.getPosition().y(), met.getColor(), met.getSize()));
         if (met.isHasResources()) {
             Ore ore = Ore.builder()
                     .position(met.getPosition())
@@ -679,12 +738,15 @@ public class GameEngineImpl implements GameEngine {
     }
 
     private void checkProjectileMeteoriteCollision(Position pos, List<UUID> toRemoveList, double damage) {
-        int ix = (int) Math.round(pos.x());
-        int iy = (int) Math.round(pos.y());
-        
-        getNearbyObjects(pos.x(), pos.y(), 1.0).stream()
-                .filter(o -> (o instanceof Meteorite && (int)Math.round(o.getPosition().x()) == ix && (int)Math.round(o.getPosition().y()) == iy) ||
-                            (o instanceof Sentinel && Math.abs(o.getPosition().x() - pos.x()) < 0.7 && Math.abs(o.getPosition().y() - pos.y()) < 0.7))
+        getNearbyObjects(pos.x(), pos.y(), 2.0).stream()
+                .filter(o -> o instanceof Meteorite)
+                .filter(o -> {
+                    double oh = o.getSize() / 2.0;
+                    // Margen de colisión para el proyectil (size 1)
+                    double ph = 0.5; 
+                    return Math.abs(o.getPosition().x() - pos.x()) < (oh + ph) &&
+                           Math.abs(o.getPosition().y() - pos.y()) < (oh + ph);
+                })
                 .findFirst()
                 .ifPresent(obj -> {
                     if (obj instanceof Meteorite met) {
@@ -694,8 +756,6 @@ public class GameEngineImpl implements GameEngine {
                         } else {
                             pendingEffects.add(new VisualEffect("HIT", met.getPosition().x(), met.getPosition().y(), met.getColor()));
                         }
-                    } else if (obj instanceof Sentinel sent) {
-                        damageSentinel(sent, null, damage);
                     }
                 });
     }
@@ -731,9 +791,9 @@ public class GameEngineImpl implements GameEngine {
 
     private synchronized List<GameObject> getNearbyObjects(double x, double y, double radius) {
         List<GameObject> nearby = new ArrayList<>();
-        int gx = Math.min(GRID_SIZE - 1, Math.max(0, (int) (x / (WIDTH / GRID_SIZE))));
-        int gy = Math.min(GRID_SIZE - 1, Math.max(0, (int) (y / (HEIGHT / GRID_SIZE))));
-        int cellRadius = (int) Math.ceil(radius / (WIDTH / GRID_SIZE)) + 1;
+        int gx = Math.min(GRID_SIZE - 1, Math.max(0, (int) (x / (double)(WIDTH / GRID_SIZE))));
+        int gy = Math.min(GRID_SIZE - 1, Math.max(0, (int) (y / (double)(HEIGHT / GRID_SIZE))));
+        int cellRadius = (int) Math.ceil(radius / (double)(WIDTH / GRID_SIZE)) + 1;
 
         for (int i = gx - cellRadius; i <= gx + cellRadius; i++) {
             for (int j = gy - cellRadius; j <= gy + cellRadius; j++) {
@@ -746,20 +806,52 @@ public class GameEngineImpl implements GameEngine {
         return nearby;
     }
 
+    private synchronized List<GameObject> getNearbyDynamicObjects(double x, double y, double radius) {
+        List<GameObject> nearby = new ArrayList<>();
+        int gx = Math.min(GRID_SIZE - 1, Math.max(0, (int) (x / (double)(WIDTH / GRID_SIZE))));
+        int gy = Math.min(GRID_SIZE - 1, Math.max(0, (int) (y / (double)(HEIGHT / GRID_SIZE))));
+        int cellRadius = (int) Math.ceil(radius / (double)(WIDTH / GRID_SIZE)) + 1;
+
+        for (int i = gx - cellRadius; i <= gx + cellRadius; i++) {
+            for (int j = gy - cellRadius; j <= gy + cellRadius; j++) {
+                if (i >= 0 && i < GRID_SIZE && j >= 0 && j < GRID_SIZE) {
+                    nearby.addAll(spatialGrid[i][j]);
+                }
+            }
+        }
+        return nearby;
+    }
+
     @Override
     public void update() {
+        tickCount++;
         long now = System.currentTimeMillis();
         updateSpatialGrid();
         if (staticObjectsChanged) {
             updateStaticGrid();
             staticObjectsChanged = false;
         }
-        manageSentinels();
+
+        if (tickCount % 30 == 0) {
+            manageSentinels();
+        }
 
         // Spawn Boss every 5 minutes if there are players
-        if (!players.isEmpty() && now - lastBossSpawnTime > BOSS_SPAWN_INTERVAL) {
-            lastBossSpawnTime = now;
-            spawnSentinelBoss();
+        if (!players.isEmpty()) {
+            if (now - lastBossSpawnTime > BOSS_SPAWN_INTERVAL) {
+                lastBossSpawnTime = now;
+                // Only spawn if NULL doesn't exist
+                if (sentinels.values().stream().noneMatch(s -> "NULL".equals(s.getName()))) {
+                    spawnSentinelBoss();
+                }
+            }
+            if (now - lastFireWallSpawnTime > FIRE_WALL_SPAWN_INTERVAL) {
+                lastFireWallSpawnTime = now;
+                // Only spawn if FIRE_WALL doesn't exist
+                if (sentinels.values().stream().noneMatch(s -> "FIRE_WALL".equals(s.getName()))) {
+                    spawnFireWallBoss();
+                }
+            }
         }
 
         // Procesar respawns
@@ -767,7 +859,7 @@ public class GameEngineImpl implements GameEngine {
             if (p.getRespawnTimer() > 0) {
                 if (now >= p.getRespawnTimer()) {
                     p.setRespawnTimer(0);
-                    p.setPosition(getRandomEmptyPosition());
+                    p.setPosition(getRandomEmptyPosition(1));
                     p.setHp(5.0);
                     p.setShield(0);
                     p.setVx(0);
@@ -788,12 +880,13 @@ public class GameEngineImpl implements GameEngine {
         sentinels.values().forEach(sent -> {
             // Movimiento aleatorio suave
             if (random.nextInt(60) == 0) {
-                sent.setVx((random.nextDouble() - 0.5) * 0.05);
-                sent.setVy((random.nextDouble() - 0.5) * 0.05);
+                double speed = "FIRE_WALL".equals(sent.getName()) ? 0.01 : 0.05;
+                sent.setVx((random.nextDouble() - 0.5) * speed);
+                sent.setVy((random.nextDouble() - 0.5) * speed);
             }
             
             Position nextSentPos = sent.getPosition().move(sent.getVx(), sent.getVy());
-            if (isValidPosition(nextSentPos) && !isOccupiedBySolid(nextSentPos)) {
+            if (isValidPosition(nextSentPos, sent.getSize()) && !isOccupiedBySolid(nextSentPos, sent.getSize())) {
                 sent.setPosition(nextSentPos);
             } else {
                 sent.setVx(-sent.getVx());
@@ -801,10 +894,11 @@ public class GameEngineImpl implements GameEngine {
             }
 
             // Disparar si hay jugadores cerca
-            boolean isBoss = "NULL".equals(sent.getName());
-            double detectionRange = isBoss ? 25 : 8;
+            boolean isNull = "NULL".equals(sent.getName());
+            boolean isFireWall = "FIRE_WALL".equals(sent.getName());
+            double detectionRange = isFireWall ? 40 : (isNull ? 25 : 8);
 
-            getNearbyObjects(sent.getPosition().x(), sent.getPosition().y(), detectionRange).stream()
+            getNearbyDynamicObjects(sent.getPosition().x(), sent.getPosition().y(), detectionRange).stream()
                     .filter(o -> o instanceof Player p && p.getRespawnTimer() == 0)
                     .map(o -> (Player) o)
                     .filter(p -> Math.sqrt(Math.pow(p.getPosition().x() - sent.getPosition().x(), 2) + 
@@ -834,23 +928,30 @@ public class GameEngineImpl implements GameEngine {
             double speed = Math.sqrt(proj.getVx() * proj.getVx() + proj.getVy() * proj.getVy());
             proj.setDistanceTraveled(proj.getDistanceTraveled() + speed);
 
-            if (!isValidPosition(nextPos) || isOccupiedBySolid(nextPos) || proj.getDistanceTraveled() >= proj.getMaxRange()) {
+            boolean expired = proj.getDistanceTraveled() >= proj.getMaxRange();
+            if (!isValidPosition(nextPos, 1) || isOccupiedBySolid(nextPos, 1) || expired) {
                 toRemove.add(proj.getId());
                 if (proj.isExplosive()) {
-                    handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage());
+                    handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage(), proj.getColor());
+                } else if (!expired) {
+                    pendingEffects.add(new VisualEffect("PROJECTILE_DEATH", proj.getPosition().x(), proj.getPosition().y(), proj.getColor()));
                 }
-                if (proj.getDistanceTraveled() < proj.getMaxRange()) {
+                if (!expired) {
                     // Solo dañar meteorito si no expiró por rango
                     checkProjectileMeteoriteCollision(nextPos, toRemove, proj.getDamage());
                 }
             } else {
                 proj.setPosition(nextPos);
                 // Check collision with players and Sentinels using spatial grid
-                getNearbyObjects(nextPos.x(), nextPos.y(), 1.0).stream()
+                getNearbyDynamicObjects(nextPos.x(), nextPos.y(), 8.0).stream()
                         .filter(o -> (o instanceof Player || o instanceof Sentinel) && !o.getId().equals(proj.getOwnerId()))
                         .filter(o -> {
-                            if (o instanceof Player p) return p.getRespawnTimer() == 0 && Math.abs(p.getPosition().x() - nextPos.x()) < 0.7 && Math.abs(p.getPosition().y() - nextPos.y()) < 0.7;
-                            if (o instanceof Sentinel s) return Math.abs(s.getPosition().x() - nextPos.x()) < 0.7 && Math.abs(s.getPosition().y() - nextPos.y()) < 0.7;
+                            double threshold = o.getSize() * 0.5;
+                            // Un pequeño margen extra para que no sea frustrante
+                            if (o.getSize() == 1) threshold = 0.7; 
+                            
+                            if (o instanceof Player p) return p.getRespawnTimer() == 0 && Math.abs(p.getPosition().x() - nextPos.x()) < threshold && Math.abs(p.getPosition().y() - nextPos.y()) < threshold;
+                            if (o instanceof Sentinel s) return Math.abs(s.getPosition().x() - nextPos.x()) < threshold && Math.abs(s.getPosition().y() - nextPos.y()) < threshold;
                             return false;
                         })
                         .findFirst()
@@ -859,7 +960,9 @@ public class GameEngineImpl implements GameEngine {
                             else if (hitObj instanceof Sentinel s) damageSentinel(s, proj.getOwnerId(), proj.getDamage());
                             
                             if (proj.isExplosive()) {
-                                handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage());
+                                handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage(), proj.getColor());
+                            } else {
+                                pendingEffects.add(new VisualEffect("PROJECTILE_DEATH", proj.getPosition().x(), proj.getPosition().y(), proj.getColor()));
                             }
                             toRemove.add(proj.getId());
                         });
@@ -879,14 +982,15 @@ public class GameEngineImpl implements GameEngine {
                     boolean collision = false;
                     
                     // Colisiones con bordes
-                    if (nextX < 0) { nextX = 0; p.setVx(0); collision = true; }
-                    if (nextX >= WIDTH) { nextX = WIDTH - 1; p.setVx(0); collision = true; }
-                    if (nextY < 0) { nextY = 0; p.setVy(0); collision = true; }
-                    if (nextY >= HEIGHT) { nextY = HEIGHT - 1; p.setVy(0); collision = true; }
+                    double r = p.getSize() / 2.0;
+                    if (nextX < r) { nextX = r; p.setVx(0); collision = true; }
+                    if (nextX >= WIDTH - r) { nextX = WIDTH - r; p.setVx(0); collision = true; }
+                    if (nextY < r) { nextY = r; p.setVy(0); collision = true; }
+                    if (nextY >= HEIGHT - r) { nextY = HEIGHT - r; p.setVy(0); collision = true; }
                     
                     // Probar movimiento en X
                     Position posWithX = new Position(nextX, p.getPosition().y());
-                    if (!isOccupiedBySolid(posWithX)) {
+                    if (!isOccupiedBySolid(posWithX, p.getSize())) {
                         p.setPosition(posWithX);
                     } else {
                         p.setVx(0);
@@ -895,15 +999,15 @@ public class GameEngineImpl implements GameEngine {
                     
                     // Probar movimiento en Y
                     Position posWithY = new Position(p.getPosition().x(), nextY);
-                    if (!isOccupiedBySolid(posWithY)) {
+                    if (!isOccupiedBySolid(posWithY, p.getSize())) {
                         p.setPosition(posWithY);
                     } else {
                         p.setVy(0);
                         collision = true;
                     }
 
-                    if (collision && speed > 0.08) {
-                        applyEnvironmentalDamage(p);
+                    if (collision && speed > 0.05) {
+                        applyEnvironmentalDamage(p, speed);
                     }
                     
                     // Aplicar Fricción
@@ -927,16 +1031,27 @@ public class GameEngineImpl implements GameEngine {
                 });
     }
 
-    private void applyEnvironmentalDamage(Player p) {
+    private void applyEnvironmentalDamage(Player p, double speed) {
         pendingEffects.add(new VisualEffect("HIT", p.getPosition().x(), p.getPosition().y(), p.getColor()));
+        
+        // Daño base 1, aumenta si la velocidad es alta (hasta 3 si superara el límite o por inercia)
+        double damage = 1.0;
+        if (speed > 0.12) damage = 3.0;
+        else if (speed > 0.08) damage = 2.0;
+
+        double remainingDamage = damage;
         if (p.getShield() > 0) {
-            p.setShield(p.getShield() - 1);
-        } else {
-            p.setHp(p.getHp() - 1);
+            double shieldDamage = Math.min(p.getShield(), remainingDamage);
+            p.setShield(p.getShield() - shieldDamage);
+            remainingDamage -= shieldDamage;
+        }
+
+        if (remainingDamage > 0) {
+            p.setHp(p.getHp() - remainingDamage);
         }
 
         if (p.getHp() <= 0) {
-            pendingEffects.add(new VisualEffect("EXPLOSION", p.getPosition().x(), p.getPosition().y(), p.getColor()));
+            pendingEffects.add(new VisualEffect("EXPLOSION", p.getPosition().x(), p.getPosition().y(), p.getColor(), p.getSize()));
             respawnPlayer(p);
             pendingEvents.add("[#f85149]Agent " + p.getName() + " structural failure due to impact.");
         }
@@ -979,7 +1094,7 @@ public class GameEngineImpl implements GameEngine {
             Position dropPos = new Position(pos.x() + ox, pos.y() + oy);
             
             // Límites del mapa
-            if (isValidPosition(dropPos)) {
+            if (isValidPosition(dropPos, 1)) {
                 Ore ore = Ore.builder()
                         .position(dropPos)
                         .type(type)
@@ -991,9 +1106,18 @@ public class GameEngineImpl implements GameEngine {
     }
 
     private void checkCollisions(Player player, Position pos) {
-        List<GameObject> nearby = getNearbyObjects(pos.x(), pos.y(), 1.5);
+        List<GameObject> nearby = getNearbyObjects(pos.x(), pos.y(), 2.0);
         for (GameObject obj : nearby) {
-            if (obj instanceof DataNode && Math.abs(obj.getPosition().x() - pos.x()) < 0.8 && Math.abs(obj.getPosition().y() - pos.y()) < 0.8) {
+            // Colisión con Sentinelas (Daño por contacto)
+            if (obj instanceof Sentinel sent) {
+                double threshold = (player.getSize() + sent.getSize()) / 2.0;
+                if (Math.abs(obj.getPosition().x() - pos.x()) < threshold && Math.abs(obj.getPosition().y() - pos.y()) < threshold) {
+                    // Aplicar daño tanto al jugador como a la sentinela
+                    // Usamos un daño por tick bajo para contacto continuo (0.2 HP)
+                    damagePlayer(player, sent.getId(), 0.2);
+                    damageSentinel(sent, player.getId(), 0.1);
+                }
+            } else if (obj instanceof DataNode && Math.abs(obj.getPosition().x() - pos.x()) < 0.8 && Math.abs(obj.getPosition().y() - pos.y()) < 0.8) {
                 if (worldObjects.remove(obj.getId()) != null) {
                     staticObjectsChanged = true;
                     player.setScore(player.getScore() + 100);
@@ -1046,21 +1170,43 @@ public class GameEngineImpl implements GameEngine {
             for (int i = 0; i < currentCount - targetCount; i++) {
                 Sentinel toRemove = currentSentinels.get(i);
                 sentinels.remove(toRemove.getId());
-                pendingEffects.add(new VisualEffect("EXPLOSION", toRemove.getPosition().x(), toRemove.getPosition().y(), toRemove.getColor()));
+                pendingEffects.add(new VisualEffect("EXPLOSION", toRemove.getPosition().x(), toRemove.getPosition().y(), toRemove.getColor(), toRemove.getSize()));
             }
         }
     }
 
-    private boolean isOccupiedBySolid(Position pos) {
-        int ix = (int) Math.round(pos.x());
-        int iy = (int) Math.round(pos.y());
-        return getNearbyObjects(pos.x(), pos.y(), 1.0).stream()
-                .filter(o -> o instanceof Meteorite)
-                .anyMatch(o -> (int)Math.round(o.getPosition().x()) == ix && (int)Math.round(o.getPosition().y()) == iy);
+    private boolean isOccupiedBySolid(Position pos, int size) {
+        double halfSize = size / 2.0;
+        double x1 = pos.x() - halfSize;
+        double x2 = pos.x() + halfSize;
+        double y1 = pos.y() - halfSize;
+        double y2 = pos.y() + halfSize;
+
+        int gx = (int) (pos.x() / (double)(WIDTH / GRID_SIZE));
+        int gy = (int) (pos.y() / (double)(HEIGHT / GRID_SIZE));
+        int gridRadius = (int) Math.ceil(halfSize / (double)(WIDTH / GRID_SIZE)) + 1;
+
+        for (int i = gx - gridRadius; i <= gx + gridRadius; i++) {
+            for (int j = gy - gridRadius; j <= gy + gridRadius; j++) {
+                if (i >= 0 && i < GRID_SIZE && j >= 0 && j < GRID_SIZE) {
+                    for (GameObject o : staticGrid[i][j]) {
+                        if (o instanceof Meteorite) {
+                            double oh = o.getSize() / 2.0;
+                            if (x1 < o.getPosition().x() + oh && x2 > o.getPosition().x() - oh &&
+                                y1 < o.getPosition().y() + oh && y2 > o.getPosition().y() - oh) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     }
 
-    private boolean isValidPosition(Position pos) {
-        return pos.x() >= 0 && pos.x() < WIDTH && pos.y() >= 0 && pos.y() < HEIGHT;
+    private boolean isValidPosition(Position pos, int size) {
+        double r = size / 2.0;
+        return pos.x() >= r && pos.x() < WIDTH - r && pos.y() >= r && pos.y() < HEIGHT - r;
     }
 
     @Override

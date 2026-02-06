@@ -14,7 +14,7 @@ public class GameLoop {
     private final GameEngine gameEngine;
     private final GameWebSocketHandler gameWebSocketHandler;
 
-    @Scheduled(fixedRate = 17) // 1000/60fps = 17ms per tick
+    @Scheduled(fixedRate = 33) // ~30fps para reducir uso de CPU (antes 17ms/60fps)
     public void run() {
         gameEngine.update();
         gameWebSocketHandler.broadcastState();

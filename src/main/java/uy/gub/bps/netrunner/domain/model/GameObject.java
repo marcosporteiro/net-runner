@@ -9,4 +9,5 @@ public interface GameObject {
     String getSymbol();
     String getColor();
     String getName();
+    default int getSize() { return 1; }
 }

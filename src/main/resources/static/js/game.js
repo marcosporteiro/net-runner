@@ -39,6 +39,8 @@ let myPlayer = null;
 let lastMessageTime = 0;
 const keysDown = {};
 let particles = [];
+let damageFlash = 0;
+let explosionFlash = 0;
 let scannerEffects = [];
 let scannedEntities = []; // Almacena info de escaneo: { id, label, distance, startTime }
 let isScannerActive = false;
@@ -82,10 +84,11 @@ const bgCtx = bgCanvas.getContext('2d');
 const spriteCache = {};
 
 class Particle {
-    constructor(x, y, color, type, evx = 0, evy = 0, lifeFactor = 1.0) {
-        this.x = x * CELL_SIZE + CELL_SIZE / 2;
-        this.y = y * CELL_SIZE + CELL_SIZE / 2;
+    constructor(x, y, color, type, evx = 0, evy = 0, lifeFactor = 1.0, pattern = 'radial') {
+        this.x = x * CELL_SIZE;
+        this.y = y * CELL_SIZE;
         this.color = color;
+        this.type = type;
         this.size = Math.random() * 3 + 2;
         this.life = 1.0;
         
@@ -103,12 +106,28 @@ class Particle {
             this.symbol = isThruster ? (Math.random() < 0.5 ? '1' : '0') : (Math.random() < 0.5 ? '·' : '•');
             this.size = isThruster ? (Math.random() * 2 + 1) : (Math.random() * 1.5 + 0.5);
         } else {
-            this.decay = (isBig ? (Math.random() * 0.03 + 0.01) : (Math.random() * 0.05 + 0.02)) / lifeFactor;
+            this.decay = (isBig ? (Math.random() * 0.015 + 0.005) : (Math.random() * 0.05 + 0.02)) / lifeFactor;
+            
             const angle = Math.random() * Math.PI * 2;
-            const speed = isBig ? (Math.random() * 8 + 2) : (Math.random() * 4 + 1);
+            let speed = isBig ? (Math.random() * 4 + 1) : (Math.random() * 2 + 0.5);
+            
+            if (isBig) {
+                if (pattern === 'ring') {
+                    speed = 6 + Math.random() * 2;
+                } else if (pattern === 'burst') {
+                    speed = Math.random() * 12 + 4;
+                }
+            }
+
             this.vx = Math.cos(angle) * speed;
             this.vy = Math.sin(angle) * speed;
-            this.symbol = type === 'DEBRIS' ? '#' : (type === 'COLLECT' ? '✧' : (type === 'HIT' ? '×' : '•'));
+            
+            if (type === 'EXPLOSION') {
+                const symbols = ['•', 'o', 'O', '°', '*'];
+                this.symbol = symbols[Math.floor(Math.random() * symbols.length)];
+            } else {
+                this.symbol = type === 'DEBRIS' ? '#' : (type === 'COLLECT' ? '✧' : (type === 'HIT' ? '×' : (type === 'PROJECTILE_DEATH' ? '·' : '•')));
+            }
         }
     }
 
@@ -116,29 +135,78 @@ class Particle {
         this.x += this.vx;
         this.y += this.vy;
         this.life -= this.decay;
-        this.vx *= 0.95;
-        this.vy *= 0.95;
+        
+        // Fricción dinámica: las explosiones frenan de forma más pesada
+        const friction = this.type === 'EXPLOSION' ? 0.92 : 0.95;
+        this.vx *= friction;
+        this.vy *= friction;
     }
 
     draw(ctx, offsetX, offsetY) {
-        ctx.globalAlpha = this.life;
-        ctx.fillStyle = this.color;
+        if (this.life <= 0) return;
+        
+        ctx.save();
+        ctx.globalAlpha = Math.min(1.0, this.life);
+        
+        let drawColor = this.color;
+        
+        ctx.fillStyle = drawColor;
         ctx.font = `${(this.size + 4) * cameraZoom}px monospace`;
         ctx.fillText(this.symbol, this.x * cameraZoom + offsetX, this.y * cameraZoom + offsetY);
-        ctx.globalAlpha = 1.0;
+        ctx.restore();
     }
 }
 
-function spawnParticles(x, y, color, type, count = 10, evx = 0, evy = 0, lifeFactor = 1.0) {
+function spawnParticles(x, y, color, type, count = 10, evx = 0, evy = 0, lifeFactor = 1.0, pattern = 'radial') {
     for (let i = 0; i < count; i++) {
-        particles.push(new Particle(x, y, color, type, evx, evy, lifeFactor));
+        particles.push(new Particle(x, y, color, type, evx, evy, lifeFactor, pattern));
     }
+}
+
+    function getMatrixEffect(text, intensity = 0.15) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$#@&%*<>[]{}";
+    // Estabilizamos el efecto por tiempo (cambia cada 250ms)
+    const t = Math.floor(Date.now() / 250);
+    
+    return text.split('').map((c, i) => {
+        // Pseudo-aleatorio estable para esta ventana de tiempo y posición
+        const seed = t + (i * 10);
+        const pseudoRand = Math.abs(Math.sin(seed) * 10000) % 1;
+        
+        if (pseudoRand < intensity) {
+            const charIdx = Math.floor(Math.abs(Math.sin(seed * 2) * 10000) % chars.length);
+            return chars[charIdx];
+        }
+        return c;
+    }).join('');
+}
+
+function getFireWallEffect(text) {
+    const t = Math.floor(Date.now() / 200);
+    const fireChars = ["!", "█", "▓", "▒", "░", "*", "^", "v"];
+    
+    return text.split('').map((c, i) => {
+        const seed = t + (i * 13);
+        const pseudoRand = Math.abs(Math.sin(seed) * 10000) % 1;
+        
+        // Efecto de "llama": algunas letras se vuelven bloques o símbolos de fuego
+        if (pseudoRand < 0.2) {
+            return fireChars[Math.floor(pseudoRand * fireChars.length * 5) % fireChars.length];
+        }
+        
+        // Algunas letras cambian a mayúsculas/minúsculas de forma agresiva (glitch)
+        if (pseudoRand > 0.9) {
+            return c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase();
+        }
+
+        return c;
+    }).join('');
 }
 
 class ScannerEffect {
     constructor(x, y) {
-        this.x = x * CELL_SIZE + CELL_SIZE / 2;
-        this.y = y * CELL_SIZE + CELL_SIZE / 2;
+        this.x = x * CELL_SIZE;
+        this.y = y * CELL_SIZE;
         this.radius = 0;
         this.maxRadius = 30 * CELL_SIZE; // Rango del escáner reducido a la mitad (30 celdas)
         this.life = 1.0;
@@ -162,7 +230,7 @@ class ScannerEffect {
                     // Partículas de datos que se mueven un poco con el anillo
                     const evx = Math.cos(angle) * 0.15;
                     const evy = Math.sin(angle) * 0.15;
-                    spawnParticles(px - 0.5, py - 0.5, COLORS.accent, 'THRUSTER', 1, -evx, -evy);
+                    spawnParticles(px, py, COLORS.accent, 'THRUSTER', 1, -evx, -evy);
                 }
             }
         }
@@ -238,9 +306,10 @@ function updateScannedEntities() {
             let label = obj.name === 'METEORITE' ? 'Meteorite' : 
                         obj.name.includes('ORE') ? `Mineral (${obj.name.replace('_ORE', '')})` :
                         obj.name === 'NULL' ? 'Unknown Entity' :
+                        obj.name === 'PROJECTILE' ? 'Incoming Threat' :
                         obj.hp !== undefined ? `Vessel: ${obj.name}` : obj.name;
 
-            const isEnemy = (obj.hp !== undefined && obj.id !== myPlayerId) || obj.name === 'SENTINEL' || obj.name === 'NULL';
+            const isEnemy = (obj.hp !== undefined && obj.id !== myPlayerId) || obj.name === 'SENTINEL' || obj.name === 'NULL' || obj.name === 'PROJECTILE';
             const existing = currentScannedMap.get(obj.id);
 
             return {
@@ -328,23 +397,28 @@ function initBackgroundCache() {
     starLightCanvas.height = window.innerHeight * LIGHT_SCALE;
 }
 
-function getSprite(symbol, color, glowRadius) {
-    const key = `${symbol}_${color}_${glowRadius}`;
+function getSprite(symbol, color, glowRadius, entitySize = 1) {
+    const key = `${symbol}_${color}_${glowRadius}_${entitySize}`;
     if (spriteCache[key]) return spriteCache[key];
     
     const sCanvas = document.createElement('canvas');
-    const size = CELL_SIZE * 2;
-    sCanvas.width = size;
-    sCanvas.height = size;
+    // Aumentamos el tamaño del canvas proporcionalmente al tamaño de la entidad
+    const padding = 15; 
+    const baseSize = CELL_SIZE * entitySize;
+    const totalSize = baseSize + padding * 2;
+    sCanvas.width = totalSize;
+    sCanvas.height = totalSize;
     const sCtx = sCanvas.getContext('2d');
     
     sCtx.shadowBlur = glowRadius;
     sCtx.shadowColor = color;
     sCtx.fillStyle = color;
-    sCtx.font = `bold ${CELL_SIZE - 6}px monospace`;
+    // Fuente proporcional al tamaño real de la entidad
+    const fontSize = baseSize * 0.85;
+    sCtx.font = `bold ${fontSize}px monospace`;
     sCtx.textAlign = 'center';
     sCtx.textBaseline = 'middle';
-    sCtx.fillText(symbol, size / 2, size / 2);
+    sCtx.fillText(symbol, totalSize / 2, totalSize / 2);
     
     spriteCache[key] = sCanvas;
     return sCanvas;
@@ -439,7 +513,7 @@ function normalize(data) {
         'o': 'objects', 'ev': 'events', 'ef': 'effects',
         'i': 'id', 'p': 'position', 's': 'symbol', 'c': 'color', 'n': 'name',
         'h': 'hp', 'sh': 'shield', 'co': 'copper', 'si': 'silver', 'go': 'gold',
-        'l': 'level', 'e': 'exp', 'w': 'weapon', 't': 'type',
+        'l': 'level', 'e': 'exp', 'w': 'weapon', 't': 'type', 'sz': 'size',
         'pi': 'playerId', 'pn': 'playerName', 'd': 'payload'
     };
 
@@ -520,24 +594,51 @@ function connect() {
             gameState.effects.forEach(e => {
                 let count = 12;
                 let lifeFactor = 1.0;
+                let pattern = 'radial';
+                const size = e.size || 1;
+
                 if (e.type === 'EXPLOSION') {
-                    count = 60;
-                    lifeFactor = 4.0; // Aumentado de 2.5
+                    count = 30 * size + 10;
+                    lifeFactor = 3.0 + size * 1.5;
+                    // Elegir patrón aleatorio para explosiones
+                    const patterns = ['radial', 'ring', 'burst'];
+                    pattern = patterns[Math.floor(Math.random() * patterns.length)];
+
+                    // Efecto de destello si es cerca del jugador
+                    if (myPlayer) {
+                        const dx = e.x - myPlayer.position.x;
+                        const dy = e.y - myPlayer.position.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < 20) {
+                            explosionFlash = Math.max(explosionFlash, (1.0 - dist/20) * 0.2);
+                        }
+                    }
                 } else if (e.type === 'DEBRIS') {
-                    count = 40;
-                    lifeFactor = 3.0; // Aumentado de 1.5
+                    count = 8 * size + 4;
+                    lifeFactor = 2.0 + size;
                 } else if (e.type === 'HIT') {
                     count = 8;
-                    lifeFactor = 2.0; // Añadido
+                    lifeFactor = 4.0;
+                } else if (e.type === 'PROJECTILE_DEATH') {
+                    count = 6;
+                    lifeFactor = 2.0;
                 }
-                spawnParticles(e.x, e.y, e.color, e.type, count, 0, 0, lifeFactor);
+                spawnParticles(e.x, e.y, e.color, e.type, count, 0, 0, lifeFactor, pattern);
             });
         }
 
         // Buscar mi jugador para la cámara
         if (myPlayerId) {
+            const prevHp = myPlayer ? myPlayer.hp : null;
+            const prevShield = myPlayer ? myPlayer.shield : null;
+            
             myPlayer = gameState.objects.find(obj => obj.id === myPlayerId);
             if (myPlayer) {
+                // Detectar daño
+                if (prevHp !== null && (myPlayer.hp < prevHp || myPlayer.shield < prevShield)) {
+                    damageFlash = 1.0;
+                }
+
                 playerNameSpan.textContent = myPlayer.name;
                 playerColorIndicator.style.color = myPlayer.color;
                 
@@ -624,6 +725,13 @@ function updatePlayerList() {
         players.sort((a, b) => {
             if (a.id === myPlayerId) return -1;
             if (b.id === myPlayerId) return 1;
+            
+            // Prioridad para jefes (FIRE_WALL y NULL) para que no desaparezcan de la lista
+            const aIsBoss = a.name === 'FIRE_WALL' || a.name === 'NULL';
+            const bIsBoss = b.name === 'FIRE_WALL' || b.name === 'NULL';
+            if (aIsBoss && !bIsBoss) return -1;
+            if (!aIsBoss && bIsBoss) return 1;
+
             return a._distance - b._distance;
         });
         // Limitar a los 8 más cercanos (incluyéndome)
@@ -653,9 +761,16 @@ function updatePlayerList() {
         
         const distLabel = p._distance !== undefined ? `<span class="muted" style="font-size: 10px; margin-left: 8px;">${(p._distance / AU_IN_CELLS).toFixed(2)} AU</span>` : '';
         
+        let displayName = p.name;
+        if (p.name === 'FIRE_WALL') {
+            displayName = getFireWallEffect(p.name);
+        } else if (p.name === 'NULL') {
+            displayName = getMatrixEffect(p.name, 0.2);
+        }
+
         entry.innerHTML = `
             <div style="display: flex; align-items: center;">
-                <span style="color: ${p.color}">${p.name}</span>
+                <span style="color: ${p.color}">${displayName}</span>
                 ${distLabel}
             </div>
             <span class="accent">${p.score || 0}</span>
@@ -839,15 +954,17 @@ function render() {
     // 2.0 Pintar celdas de meteoritos y ores
     ctx.globalAlpha = 0.15;
     gameState.objects.forEach(obj => {
-        if (obj.name === 'METEORITE' || obj.name.includes('ORE')) {
-            const x = obj.position.x * scaledCellSize + offsetX;
-            const y = obj.position.y * scaledCellSize + offsetY;
+        if (obj.name === 'METEORITE' || obj.name === 'LARGE_METEORITE' || obj.name.includes('ORE')) {
+            const size = obj.size || 1;
+            const x = (obj.position.x - size / 2) * scaledCellSize + offsetX;
+            const y = (obj.position.y - size / 2) * scaledCellSize + offsetY;
+            const drawSize = size * scaledCellSize;
 
             // Culling visual para el fondo de celda
-            if (x < -scaledCellSize || x > canvas.width || y < -scaledCellSize || y > canvas.height) return;
+            if (x < -drawSize || x > canvas.width || y < -drawSize || y > canvas.height) return;
 
             ctx.fillStyle = obj.color;
-            ctx.fillRect(x, y, scaledCellSize, scaledCellSize);
+            ctx.fillRect(x, y, drawSize, drawSize);
         }
     });
     ctx.globalAlpha = 1.0;
@@ -922,11 +1039,11 @@ function render() {
         // Omitir jugadores que están reiniciando
         if (obj.hp === 0) return;
 
-        const x = obj.position.x * CELL_SIZE * cameraZoom + offsetX + (CELL_SIZE * cameraZoom) / 2;
-        const y = obj.position.y * CELL_SIZE * cameraZoom + offsetY + (CELL_SIZE * cameraZoom) / 2;
+        const x = obj.position.x * CELL_SIZE * cameraZoom + offsetX;
+        const y = obj.position.y * CELL_SIZE * cameraZoom + offsetY;
 
         // Culling visual
-        const cullMargin = CELL_SIZE * cameraZoom;
+        const cullMargin = (obj.size || 1) * CELL_SIZE * cameraZoom;
         if (x < -cullMargin || x > canvas.width + cullMargin || y < -cullMargin || y > canvas.height + cullMargin) {
             return;
         }
@@ -940,14 +1057,15 @@ function render() {
         let glow = 5;
         if (obj.id === myPlayerId) glow = 12;
         else if (obj.name === 'NULL') glow = 25;
-        else if (obj.name === 'METEORITE') glow = 0; 
+        else if (obj.name === 'FIRE_WALL') glow = 40;
+        else if (obj.name === 'METEORITE' || obj.name === 'LARGE_METEORITE') glow = 0; 
         else if (obj.name.includes('ORE')) glow = 2; 
         else if (obj.name === 'PROJECTILE' || obj.name === 'DATA_NODE') glow = 8;
 
-        // Delinear si está siendo escaneado (gradual)
-        const sprite = getSprite(obj.symbol, obj.color, glow);
-        let sSize = CELL_SIZE * 2 * cameraZoom;
-        if (obj.name === 'NULL') sSize *= 1.6;
+        const size = obj.size || 1;
+        const sprite = getSprite(obj.symbol, obj.color, glow, size);
+        const padding = 15 * cameraZoom;
+        const sSize = size * CELL_SIZE * cameraZoom + padding * 2;
         ctx.drawImage(sprite, x - sSize / 2, y - sSize / 2, sSize, sSize);
 
         // Thruster particles (1s and 0s)
@@ -968,14 +1086,29 @@ function render() {
         // Elementos dinámicos (Nombre y barras)
         if (obj.hp !== undefined) {
             ctx.font = `${11 * Math.max(0.8, cameraZoom)}px "Cascadia Code", "Courier New", Courier, monospace`;
-            ctx.fillStyle = obj.color;
-            const label = obj.id === myPlayerId ? `YOU (${obj.score})` : `${obj.name} (${obj.score})`;
-            ctx.fillText(label, x, y - (CELL_SIZE * cameraZoom) / 2 - 8 * cameraZoom);
             
-            const barWidth = 24 * cameraZoom;
+            let labelName = obj.name;
+            let isBoss = false;
+            if (obj.name === 'FIRE_WALL') {
+                labelName = getFireWallEffect(obj.name);
+                isBoss = true;
+            } else if (obj.name === 'NULL') {
+                labelName = getMatrixEffect(obj.name, 0.15);
+                isBoss = true;
+            }
+            
+            const labelText = obj.id === myPlayerId ? `YOU (${obj.score})` : `${labelName} (${obj.score})`;
+            const objHeight = (obj.size || 1) * CELL_SIZE * cameraZoom;
+            const labelY = y - objHeight / 2 - 8 * cameraZoom;
+            
+            ctx.textAlign = 'center';
+            ctx.fillStyle = obj.color;
+            ctx.fillText(labelText, x, labelY);
+            
+            const barWidth = Math.max(24, (obj.size || 1) * 12) * cameraZoom;
             const barHeight = 2 * Math.max(0.5, cameraZoom);
             const gap = 2 * cameraZoom;
-            let currentY = y + (CELL_SIZE * cameraZoom) / 2 + 4 * cameraZoom;
+            let currentY = y + objHeight / 2 + 4 * cameraZoom;
 
             // Barra de Escudo
             ctx.fillStyle = COLORS.grid;
@@ -1130,19 +1263,44 @@ function render() {
                 const obj = gameState.objects.find(o => o.id === scanData.id);
                 if (!obj || obj.hp === 0) return;
 
-                const x = obj.position.x * CELL_SIZE * cameraZoom + offsetX + (CELL_SIZE * cameraZoom) / 2;
-                const y = obj.position.y * CELL_SIZE * cameraZoom + offsetY + (CELL_SIZE * cameraZoom) / 2;
+                const x = obj.position.x * CELL_SIZE * cameraZoom + offsetX;
+                const y = obj.position.y * CELL_SIZE * cameraZoom + offsetY;
                 const scanElapsed = now - scanData.startTime;
 
                 ctx.save();
-                // Delineado circular
+                // Delineado circular proporcional al tamaño
                 ctx.beginPath();
-                const outlineSize = CELL_SIZE * cameraZoom * 1.2;
+                const outlineSize = ((obj.size || 1) + 0.5) * CELL_SIZE * cameraZoom;
                 ctx.arc(x, y, outlineSize / 2, 0, Math.PI * 2);
                 ctx.strokeStyle = scanData.isEnemy ? COLORS.danger : COLORS.accent;
                 ctx.lineWidth = 2;
                 const alpha = Math.min(0.8, scanElapsed / 500) * scannerAlpha;
                 ctx.globalAlpha = alpha;
+                ctx.stroke();
+
+                // Encuadre rectangular (esquinas)
+                const frameSize = (obj.size || 1) * CELL_SIZE * cameraZoom;
+                const cornerLen = Math.min(frameSize * 0.3, 10 * cameraZoom);
+                const half = frameSize / 2;
+                
+                ctx.beginPath();
+                // Top-left
+                ctx.moveTo(x - half, y - half + cornerLen);
+                ctx.lineTo(x - half, y - half);
+                ctx.lineTo(x - half + cornerLen, y - half);
+                // Top-right
+                ctx.moveTo(x + half - cornerLen, y - half);
+                ctx.lineTo(x + half, y - half);
+                ctx.lineTo(x + half, y - half + cornerLen);
+                // Bottom-left
+                ctx.moveTo(x - half, y + half - cornerLen);
+                ctx.lineTo(x - half, y + half);
+                ctx.lineTo(x - half + cornerLen, y + half);
+                // Bottom-right
+                ctx.moveTo(x + half - cornerLen, y + half);
+                ctx.lineTo(x + half, y + half);
+                ctx.lineTo(x + half, y + half - cornerLen);
+                
                 ctx.stroke();
 
                 // Texto de información
@@ -1152,7 +1310,8 @@ function render() {
                 ctx.fillStyle = scanData.isEnemy ? COLORS.danger : COLORS.accent;
                 ctx.textAlign = 'center';
                 const scanLabel = `${scanData.label} [${scanData.distance} AU]`;
-                ctx.fillText(scanLabel, x, y - (CELL_SIZE * cameraZoom) - 15 * cameraZoom);
+                const offset = ((obj.size || 1) / 2 * CELL_SIZE * cameraZoom) + 15 * cameraZoom;
+                ctx.fillText(scanLabel, x, y - offset);
                 ctx.restore();
             });
         }
@@ -1176,6 +1335,34 @@ function render() {
             ctx.fillStyle = COLORS.fg;
             ctx.fillText('_', canvas.width / 2 + 110, canvas.height / 2 + 20);
         }
+    }
+
+    // 7.5 Efectos de Daño y Explosión (Flashes)
+    if (damageFlash > 0) {
+        const flicker = Math.random() > 0.5 ? 1.0 : 0.8;
+        ctx.fillStyle = `rgba(255, 0, 0, ${damageFlash * 0.12 * flicker})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        damageFlash -= 0.02;
+    }
+    if (explosionFlash > 0) {
+        const flicker = Math.random() > 0.3 ? 1.0 : 0.7;
+        ctx.fillStyle = `rgba(255, 255, 255, ${explosionFlash * 0.15 * flicker})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        explosionFlash -= 0.015;
+    }
+
+    // 7.6 Efecto Glitch por daño crítico
+    if (damageFlash > 0.6) {
+        ctx.save();
+        const glitchAmount = Math.floor(damageFlash * 8);
+        for (let i = 0; i < glitchAmount; i++) {
+            const h = Math.random() * 30 + 5;
+            const y = Math.random() * canvas.height;
+            const xOff = (Math.random() - 0.5) * 50 * damageFlash;
+            ctx.globalAlpha = 0.5;
+            ctx.drawImage(canvas, 0, y, canvas.width, h, xOff, y, canvas.width, h);
+        }
+        ctx.restore();
     }
 
     // 8. Dibujar Mini-mapa
@@ -1207,11 +1394,12 @@ function renderMinimap() {
         const mx = obj.position.x * scaleX;
         const my = obj.position.y * scaleY;
 
-        if (obj.name === 'NULL') {
+        if (obj.name === 'NULL' || obj.name === 'FIRE_WALL') {
             // Jefe
-            minimapCtx.fillStyle = '#ff4500';
+            minimapCtx.fillStyle = obj.name === 'FIRE_WALL' ? '#ff3300' : '#ff4500';
             minimapCtx.beginPath();
-            minimapCtx.arc(mx, my, 4, 0, Math.PI * 2);
+            const radius = obj.name === 'FIRE_WALL' ? 6 : 4;
+            minimapCtx.arc(mx, my, radius, 0, Math.PI * 2);
             minimapCtx.fill();
         } else if (obj.hp !== undefined && obj.id !== myPlayerId) {
             // Otros jugadores
