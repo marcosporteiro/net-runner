@@ -62,6 +62,15 @@ const MAX_ZOOM = 3.0;
 const MIN_ZOOM = 0.4;
 const MOUSE_PAN_FACTOR = 0.04;
 
+// Detección de Mobile
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 900;
+
+// Variables Joystick
+let joystickActive = false;
+let joystickStartPos = { x: 0, y: 0 };
+let joystickCurrentPos = { x: 0, y: 0 };
+const JOYSTICK_RADIUS = 60;
+
 // Sistema de Estrellas Decorativas
 const stars = [];
 for (let i = 0; i < 8000; i++) {
@@ -1741,7 +1750,126 @@ function animLoop() {
         lastFpsUpdate = now;
     }
 
+    if (joystickActive) {
+        updateJoystickMovement();
+    }
+
     render();
     requestAnimationFrame(animLoop);
 }
+
+// Lógica de Joystick y Touch
+if (isMobile) {
+    initMobileControls();
+}
+
+function initMobileControls() {
+    const guide = document.getElementById('guide-content');
+    if (guide) {
+        guide.innerHTML = `<span class="accent">JOYSTICK</span> to move | <span class="accent">FIRE</span> to shoot | <span class="accent">SCAN</span> to scan`;
+    }
+    
+    // Si es mobile, bajamos el zoom por defecto para ver mejor el entorno
+    targetZoom = 0.7;
+
+    const stick = document.getElementById('joystick-stick');
+    const zone = document.getElementById('joystick-zone');
+    const btnShoot = document.getElementById('btn-shoot');
+    const btnScan = document.getElementById('btn-scan');
+
+    zone.addEventListener('touchstart', (e) => {
+        joystickActive = true;
+        const touch = e.touches[0];
+        const rect = zone.getBoundingClientRect();
+        joystickStartPos = {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2
+        };
+        e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+        if (!joystickActive) return;
+        const touch = e.touches[0];
+        
+        let dx = touch.clientX - joystickStartPos.x;
+        let dy = touch.clientY - joystickStartPos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist > JOYSTICK_RADIUS) {
+            dx = (dx / dist) * JOYSTICK_RADIUS;
+            dy = (dy / dist) * JOYSTICK_RADIUS;
+        }
+        
+        joystickCurrentPos = { x: dx, y: dy };
+        stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => {
+        if (!joystickActive) return;
+        joystickActive = false;
+        joystickCurrentPos = { x: 0, y: 0 };
+        stick.style.transform = `translate(-50%, -50%)`;
+        
+        // Detener movimiento
+        sendInput('MOVE_STOP', 'UP');
+        sendInput('MOVE_STOP', 'DOWN');
+        sendInput('MOVE_STOP', 'LEFT');
+        sendInput('MOVE_STOP', 'RIGHT');
+        keysDown['w'] = keysDown['s'] = keysDown['a'] = keysDown['d'] = false;
+    });
+
+    btnShoot.addEventListener('touchstart', (e) => {
+        if (myPlayer && !isScannerActive) {
+            sendInput('SHOOT', '');
+        }
+        e.preventDefault();
+    }, { passive: false });
+
+    btnScan.addEventListener('touchstart', (e) => {
+        performScan();
+        e.preventDefault();
+    }, { passive: false });
+}
+
+function updateJoystickMovement() {
+    const threshold = 15;
+    const dx = joystickCurrentPos.x;
+    const dy = joystickCurrentPos.y;
+
+    // UP/DOWN
+    if (dy < -threshold && !keysDown['w']) {
+        keysDown['w'] = true;
+        keysDown['s'] = false;
+        sendInput('MOVE_START', 'UP');
+        sendInput('MOVE_STOP', 'DOWN');
+    } else if (dy > threshold && !keysDown['s']) {
+        keysDown['s'] = true;
+        keysDown['w'] = false;
+        sendInput('MOVE_START', 'DOWN');
+        sendInput('MOVE_STOP', 'UP');
+    } else if (Math.abs(dy) <= threshold && (keysDown['w'] || keysDown['s'])) {
+        if (keysDown['w']) sendInput('MOVE_STOP', 'UP');
+        if (keysDown['s']) sendInput('MOVE_STOP', 'DOWN');
+        keysDown['w'] = keysDown['s'] = false;
+    }
+
+    // LEFT/RIGHT
+    if (dx < -threshold && !keysDown['a']) {
+        keysDown['a'] = true;
+        keysDown['d'] = false;
+        sendInput('MOVE_START', 'LEFT');
+        sendInput('MOVE_STOP', 'RIGHT');
+    } else if (dx > threshold && !keysDown['d']) {
+        keysDown['d'] = true;
+        keysDown['a'] = false;
+        sendInput('MOVE_START', 'RIGHT');
+        sendInput('MOVE_STOP', 'LEFT');
+    } else if (Math.abs(dx) <= threshold && (keysDown['a'] || keysDown['d'])) {
+        if (keysDown['a']) sendInput('MOVE_STOP', 'LEFT');
+        if (keysDown['d']) sendInput('MOVE_STOP', 'RIGHT');
+        keysDown['a'] = keysDown['d'] = false;
+    }
+}
+
 animLoop();
