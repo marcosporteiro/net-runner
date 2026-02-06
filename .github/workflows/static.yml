@@ -1,0 +1,48 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Inject WebSocket URL
+        shell: bash
+        run: |
+          if [ -n "${{ vars.WS_URL }}" ]; then
+            echo "Injecting WS_URL: ${{ vars.WS_URL }}"
+            sed -i "s|WS_URL_PLACEHOLDER|${{ vars.WS_URL }}|g" src/main/resources/static/index.html
+          else
+            echo "No WS_URL variable found, using default placeholder"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Desplegar el contenido estático de la aplicación Spring Boot
+          path: 'src/main/resources/static'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

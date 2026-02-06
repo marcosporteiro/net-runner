@@ -457,18 +457,24 @@ function normalize(data) {
 }
 
 function connect() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    let host = window.location.host;
+    let wsUrl = window.CONFIG && window.CONFIG.WS_URL;
+    
+    // Si no hay configuración o sigue teniendo el placeholder, intentar autodetección
+    if (!wsUrl || wsUrl === 'WS_URL_PLACEHOLDER') {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        let host = window.location.host;
 
-    if (!host || host.includes('localhost') || host.includes('127.0.0.1')) {
-        if (!host.includes(':8080')) {
-            const hostname = window.location.hostname || 'localhost';
-            host = `${hostname}:8080`;
+        if (!host || host.includes('localhost') || host.includes('127.0.0.1')) {
+            if (!host.includes(':8080')) {
+                const hostname = window.location.hostname || 'localhost';
+                host = `${hostname}:8080`;
+            }
         }
+        wsUrl = `${protocol}//${host}/game`;
     }
 
-    log(`Initializing uplink to ${host}...`);
-    socket = new WebSocket(`${protocol}//${host}/game`);
+    log(`Initializing uplink to ${wsUrl}...`);
+    socket = new WebSocket(wsUrl);
     socket.binaryType = 'arraybuffer';
 
     socket.onopen = () => {
