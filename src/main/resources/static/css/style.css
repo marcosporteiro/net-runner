@@ -24,6 +24,7 @@ body, html {
     background-color: var(--bg);
     color: var(--fg);
     font-family: 'Cascadia Code', 'Courier New', Courier, monospace;
+    touch-action: none;
 }
 
 #terminal {
@@ -179,6 +180,10 @@ body, html {
 #player-color-indicator:hover {
     transform: scale(1.2);
     text-decoration: none;
+}
+
+#tutorial-panel .hud-panel {
+    min-width: 500px;
 }
 
 .hud-bottom {
@@ -347,25 +352,30 @@ body, html {
 }
 
 #joystick-zone {
-    width: 120px;
-    height: 120px;
+    width: 150px;
+    height: 150px;
     position: relative;
     pointer-events: auto;
+    /* border: 1px dashed rgba(255,255,255,0.1); */ /* Para debug */
 }
 
 #joystick-base {
-    width: 100%;
-    height: 100%;
+    width: 80px;
+    height: 80px;
     background: rgba(255, 255, 255, 0.05);
     border: 2px solid var(--border);
     border-radius: 50%;
-    position: relative;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     backdrop-filter: blur(4px);
+    transition: opacity 0.2s;
 }
 
 #joystick-stick {
-    width: 50px;
-    height: 50px;
+    width: 40px;
+    height: 40px;
     background: var(--accent);
     border-radius: 50%;
     position: absolute;
@@ -373,7 +383,6 @@ body, html {
     left: 50%;
     transform: translate(-50%, -50%);
     box-shadow: 0 0 15px rgba(88, 166, 255, 0.5);
-    transition: transform 0.1s ease-out;
 }
 
 #mobile-actions {
@@ -401,70 +410,256 @@ body, html {
     color: var(--bg);
 }
 
-/* Responsive adjustments */
+/* Ajustes Responsive - Rediseño Mobile (Desktop-like) */
 @media (max-width: 900px) {
     #overlay {
         padding: 10px;
+        background: radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.2) 100%);
     }
 
     .hud-top {
-        flex-direction: column;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-start;
         gap: 5px;
-        align-items: stretch;
     }
 
+    /* Reducir escala general de paneles en mobile */
     .hud-panel {
-        padding: 5px 10px;
+        padding: 8px 10px;
         font-size: 10px;
+        border-radius: 2px;
+        background: var(--panel-bg);
+        border: 1px solid var(--border);
     }
 
+    .panel-header {
+        font-size: 8px;
+        margin-bottom: 6px;
+        padding-bottom: 4px;
+        display: block !important; /* Forzar mostrar encabezados */
+    }
+
+    /* Panel de Sistema */
+    .hud-top > .hud-panel:first-child {
+        width: 140px;
+        min-width: unset;
+    }
+
+    .hud-top > .hud-panel:first-child div > div:nth-child(2), /* Status */
+    .hud-top > .hud-panel:first-child div > div:nth-child(3) { /* Theme */
+        display: block !important;
+        font-size: 9px;
+    }
+
+    #player-name {
+        font-size: 11px;
+    }
+
+    /* Panel de Métricas */
     .stats-panel {
-        width: 100%;
+        width: 180px;
+        min-width: unset;
+        gap: 4px;
     }
 
-    .vital-stats, .resource-stats, .engine-stats, .progression-stats, .system-stats {
-        flex-wrap: wrap;
+    .vital-stats, .resource-stats, .engine-stats, .system-stats {
         gap: 8px;
-        justify-content: flex-start !important;
+        padding-bottom: 2px;
+    }
+
+    .panel-label {
+        font-size: 8px;
+        min-width: 28px;
     }
 
     .stat-item {
-        font-size: 10px;
+        font-size: 9px;
     }
 
+    .progression-stats {
+        font-size: 9px;
+        justify-content: flex-end;
+    }
+
+    /* Mostrar recursos pero compacto */
+    .resource-stats {
+        display: flex !important;
+        position: static;
+        background: transparent;
+        padding: 0;
+        border: none;
+    }
+
+    .combat-stats, .engine-stats, .system-stats {
+        display: flex !important;
+    }
+
+    /* Logs: Estilo Desktop pero pequeño */
     #logs-container {
         left: 10px !important;
-        bottom: 140px !important;
-        width: calc(100% - 20px);
-        pointer-events: none;
-    }
-
-    #logs {
-        max-height: 60px;
-    }
-
-    #chat-input {
+        bottom: 120px !important;
+        width: 180px !important;
         pointer-events: auto;
     }
 
+    #logs-container .hud-panel {
+        background: var(--panel-bg);
+        border: 1px solid var(--border);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    #logs-container .panel-header {
+        display: block !important;
+    }
+
+    #logs-container div:has(#chat-input) {
+        display: flex !important;
+        padding-top: 5px !important;
+        margin-top: 2px !important;
+    }
+
+    #chat-input {
+        font-size: 9px !important;
+    }
+
+    #logs {
+        max-height: 40px;
+        font-size: 8px;
+    }
+
+    .log-entry {
+        margin-bottom: 1px !important;
+    }
+
+    /* Radar: Estilo Desktop (Cuadrado) */
     #minimap-container {
-        display: none;
+        right: 10px !important;
+        bottom: 120px !important;
     }
 
+    #minimap-panel {
+        width: 140px !important;
+        height: auto !important;
+        padding: 8px !important;
+        border-radius: 2px !important;
+        border: 1px solid var(--border) !important;
+        background: var(--panel-bg) !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    #minimap-panel.expanded {
+        width: 95vw !important;
+        height: 85vh !important;
+        position: fixed !important;
+        top: 5vh !important;
+        left: 2.5vw !important;
+        right: auto !important;
+        bottom: auto !important;
+        z-index: 3000 !important;
+        padding: 15px !important;
+    }
+
+    #minimap-panel.expanded #minimapCanvas {
+        height: 60vh !important;
+    }
+
+    #minimap-panel.expanded .panel-header {
+        font-size: 10px !important;
+        margin-bottom: 12px;
+    }
+
+    #minimap-panel .panel-header {
+        display: block !important;
+    }
+
+    #minimapCanvas {
+        height: 100px !important;
+        width: 100% !important;
+        border-radius: 0 !important;
+        border: 1px solid var(--border);
+    }
+
+    #player-list {
+        display: block !important;
+        max-height: 60px;
+        font-size: 9px;
+    }
+
+    #minimap-panel.expanded #player-list {
+        max-height: 18vh !important;
+        font-size: 11px !important;
+    }
+
+    .player-entry {
+        font-size: 9px;
+    }
+
+    #minimap-panel.expanded .player-entry {
+        font-size: 11px !important;
+        margin-bottom: 6px;
+    }
+
+    /* Guía operativa */
     #tutorial-panel {
-        display: none;
+        display: flex;
+        position: absolute;
+        bottom: 110px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: auto;
+        z-index: 1500;
     }
 
+    #tutorial-panel .hud-panel {
+        min-width: unset;
+        padding: 4px 10px;
+        font-size: 9px;
+    }
+
+    /* Controles Táctiles */
     #mobile-controls {
         display: flex;
-        padding: 0 20px;
-        bottom: 20px;
+        padding: 0 10px;
+        bottom: 10px;
+        height: 100px;
+        z-index: 2000; /* Asegurar que estén sobre los paneles de logs/radar */
+    }
+
+    #joystick-zone {
+        width: 100px;
+        height: 100px;
+    }
+
+    #joystick-base {
+        width: 60px;
+        height: 60px;
+        background: rgba(88, 166, 255, 0.05);
+        border: 1px solid var(--accent);
+    }
+
+    .mobile-btn {
+        width: 55px;
+        height: 55px;
+        font-size: 10px;
+        border-radius: 4px !important; /* Más cuadrado como escritorio */
+        background: var(--panel-bg) !important;
+        border: 1px solid var(--border) !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+    }
+
+    #btn-shoot {
+        border-color: var(--danger) !important;
+    }
+
+    #btn-scan {
+        border-color: var(--accent) !important;
     }
 }
 
 @media (max-height: 600px) {
-    #logs-container {
-        display: none;
+    #logs-container, .system-stats, .engine-stats {
+        display: none !important;
     }
 }
 

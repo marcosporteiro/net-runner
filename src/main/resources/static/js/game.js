@@ -63,10 +63,15 @@ const MIN_ZOOM = 0.4;
 const MOUSE_PAN_FACTOR = 0.04;
 
 // Detección de Mobile
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 900;
+function checkMobile() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 900;
+}
+let isMobile = checkMobile();
+let mobileControlsInitialized = false;
 
 // Variables Joystick
 let joystickActive = false;
+let joystickTouchId = null;
 let joystickStartPos = { x: 0, y: 0 };
 let joystickCurrentPos = { x: 0, y: 0 };
 const JOYSTICK_RADIUS = 60;
@@ -591,6 +596,26 @@ function log(message) {
     }
 }
 
+function updateResponsiveUI() {
+    const mobileNow = checkMobile();
+    const guide = document.getElementById('guide-content');
+    
+    if (guide) {
+        if (mobileNow) {
+            guide.innerHTML = `<span class="accent">JOYSTICK</span> to move | <span class="accent">FIRE</span> to shoot | <span class="accent">SCAN</span> to scan`;
+        } else {
+            guide.innerHTML = `<span class="accent">WASD</span> to navigate | <span class="accent">SPACE/CLICK</span> to shoot | <span class="accent">C</span> to scan | <span class="accent">F11</span> full extraction`;
+        }
+    }
+    
+    if (mobileNow && !mobileControlsInitialized) {
+        initMobileControls();
+        mobileControlsInitialized = true;
+    }
+    
+    isMobile = mobileNow;
+}
+
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -599,6 +624,8 @@ function resize() {
     // También actualizar starLightCanvas
     starLightCanvas.width = canvas.width * LIGHT_SCALE;
     starLightCanvas.height = canvas.height * LIGHT_SCALE;
+    
+    updateResponsiveUI();
 }
 
 window.addEventListener('resize', resize);
@@ -1758,39 +1785,53 @@ function animLoop() {
     requestAnimationFrame(animLoop);
 }
 
-// Lógica de Joystick y Touch
-if (isMobile) {
-    initMobileControls();
-}
+// Lógica de Joystick y Touch se maneja en updateResponsiveUI
 
 function initMobileControls() {
-    const guide = document.getElementById('guide-content');
-    if (guide) {
-        guide.innerHTML = `<span class="accent">JOYSTICK</span> to move | <span class="accent">FIRE</span> to shoot | <span class="accent">SCAN</span> to scan`;
-    }
-    
-    // Si es mobile, bajamos el zoom por defecto para ver mejor el entorno
-    targetZoom = 0.7;
+    // Zoom por defecto para mobile
+    targetZoom = 0.55;
+    cameraZoom = 0.55;
 
     const stick = document.getElementById('joystick-stick');
+    const base = document.getElementById('joystick-base');
     const zone = document.getElementById('joystick-zone');
     const btnShoot = document.getElementById('btn-shoot');
     const btnScan = document.getElementById('btn-scan');
 
     zone.addEventListener('touchstart', (e) => {
+        if (joystickActive) return;
+        const touch = e.changedTouches[0];
+        joystickTouchId = touch.identifier;
         joystickActive = true;
-        const touch = e.touches[0];
+        
         const rect = zone.getBoundingClientRect();
+        const bx = touch.clientX - rect.left;
+        const by = touch.clientY - rect.top;
+        
+        base.style.left = `${bx}px`;
+        base.style.top = `${by}px`;
+        base.style.opacity = '1';
+
         joystickStartPos = {
-            x: rect.left + rect.width / 2,
-            y: rect.top + rect.height / 2
+            x: touch.clientX,
+            y: touch.clientY
         };
+        joystickCurrentPos = { x: 0, y: 0 };
+        stick.style.transform = `translate(-50%, -50%)`;
         e.preventDefault();
     }, { passive: false });
 
     window.addEventListener('touchmove', (e) => {
         if (!joystickActive) return;
-        const touch = e.touches[0];
+        
+        let touch = null;
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === joystickTouchId) {
+                touch = e.changedTouches[i];
+                break;
+            }
+        }
+        if (!touch) return;
         
         let dx = touch.clientX - joystickStartPos.x;
         let dy = touch.clientY - joystickStartPos.y;
@@ -1803,13 +1844,60 @@ function initMobileControls() {
         
         joystickCurrentPos = { x: dx, y: dy };
         stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-    }, { passive: true });
+        
+        if (e.cancelable) e.preventDefault();
+    }, { passive: false });
 
-    window.addEventListener('touchend', () => {
+    window.addEventListener('touchend', (e) => {
         if (!joystickActive) return;
+        
+        let touch = null;
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === joystickTouchId) {
+                touch = e.changedTouches[i];
+                break;
+            }
+        }
+        if (!touch) return;
+
         joystickActive = false;
+        joystickTouchId = null;
         joystickCurrentPos = { x: 0, y: 0 };
         stick.style.transform = `translate(-50%, -50%)`;
+        
+        // Reset base position
+        base.style.left = '50%';
+        base.style.top = '50%';
+        base.style.opacity = '0.5';
+        
+        // Detener movimiento
+        sendInput('MOVE_STOP', 'UP');
+        sendInput('MOVE_STOP', 'DOWN');
+        sendInput('MOVE_STOP', 'LEFT');
+        sendInput('MOVE_STOP', 'RIGHT');
+        keysDown['w'] = keysDown['s'] = keysDown['a'] = keysDown['d'] = false;
+    });
+
+    window.addEventListener('touchcancel', (e) => {
+        if (!joystickActive) return;
+        
+        let touch = null;
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === joystickTouchId) {
+                touch = e.changedTouches[i];
+                break;
+            }
+        }
+        if (!touch) return;
+
+        joystickActive = false;
+        joystickTouchId = null;
+        joystickCurrentPos = { x: 0, y: 0 };
+        stick.style.transform = `translate(-50%, -50%)`;
+        
+        base.style.left = '50%';
+        base.style.top = '50%';
+        base.style.opacity = '0.5';
         
         // Detener movimiento
         sendInput('MOVE_STOP', 'UP');
@@ -1823,11 +1911,27 @@ function initMobileControls() {
         if (myPlayer && !isScannerActive) {
             sendInput('SHOOT', '');
         }
+        btnShoot.style.background = 'var(--accent)';
+        btnShoot.style.color = 'var(--bg)';
+        e.preventDefault();
+    }, { passive: false });
+
+    btnShoot.addEventListener('touchend', (e) => {
+        btnShoot.style.background = '';
+        btnShoot.style.color = '';
         e.preventDefault();
     }, { passive: false });
 
     btnScan.addEventListener('touchstart', (e) => {
         performScan();
+        btnScan.style.background = 'var(--accent)';
+        btnScan.style.color = 'var(--bg)';
+        e.preventDefault();
+    }, { passive: false });
+
+    btnScan.addEventListener('touchend', (e) => {
+        btnScan.style.background = '';
+        btnScan.style.color = '';
         e.preventDefault();
     }, { passive: false });
 }
