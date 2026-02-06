@@ -1,0 +1,267 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg: #010409;
+    --fg: #c9d1d9;
+    --panel-bg: rgba(1, 4, 9, 0.95);
+    --border: #30363d;
+    --accent: #58a6ff;
+    --success: #3fb950;
+    --danger: #f85149;
+    --warning: #d29922;
+    --muted: #8b949e;
+    --grid: #0d1117;
+}
+
+body, html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: 'Cascadia Code', 'Courier New', Courier, monospace;
+}
+
+#terminal {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+#gameCanvas {
+    display: block;
+    image-rendering: pixelated;
+}
+
+#overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 30px 40px;
+    background: radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.4) 100%);
+    user-select: none;
+}
+
+#minimapCanvas {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border);
+    image-rendering: pixelated;
+    flex-grow: 1;
+}
+
+.hud-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-size: 13px;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+    transition: all 0.3s ease, opacity 0.5s ease;
+    pointer-events: auto;
+}
+
+.hud-panel:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 25px rgba(88, 166, 255, 0.15);
+}
+
+.hud-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.hud-center {
+    display: flex;
+    justify-content: flex-end;
+    flex-grow: 1;
+    padding-top: 20px;
+    padding-bottom: 20px;
+}
+
+
+.panel-header {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+    letter-spacing: 1px;
+}
+
+#player-list {
+    max-height: 150px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    padding-right: 4px;
+    margin-top: 8px;
+}
+
+#player-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+#player-list::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+.player-entry {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    margin-bottom: 4px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.player-entry:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.clickable {
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.clickable:hover {
+    text-decoration: underline;
+}
+
+#player-color-indicator {
+    font-size: 16px;
+    vertical-align: middle;
+    padding: 0 4px;
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+
+#player-color-indicator:hover {
+    transform: scale(1.2);
+    text-decoration: none;
+}
+
+.hud-bottom {
+    display: flex;
+    justify-content: center;
+    transition: opacity 0.5s ease;
+}
+
+.transparent {
+    opacity: 0.2;
+}
+
+.status-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-tag.connected {
+    background-color: rgba(35, 134, 54, 0.2);
+    color: var(--success);
+    border: 1px solid #238636;
+}
+
+.status-tag.disconnected {
+    background-color: rgba(218, 54, 51, 0.2);
+    color: var(--danger);
+    border: 1px solid #da3633;
+}
+
+#logs {
+    max-height: 180px;
+    overflow-y: auto;
+    color: var(--muted);
+    font-size: 12px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    padding-right: 4px;
+}
+
+#logs::-webkit-scrollbar {
+    width: 4px;
+}
+
+#logs::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+.log-entry {
+    margin-bottom: 2px;
+}
+
+.accent {
+    color: var(--accent);
+}
+
+.success {
+    color: var(--success);
+}
+
+.danger {
+    color: var(--danger);
+}
+
+.muted {
+    color: var(--muted);
+}
+
+.warning {
+    color: var(--warning);
+}
+
+.stats-row {
+    display: flex;
+    gap: 15px;
+    margin-top: 5px;
+}
+
+.stat-item {
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.panel-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Scanline effect for terminal feel */
+#terminal::after {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+    z-index: 20;
+    background-size: 100% 3px, 3px 100%;
+    pointer-events: none;
+}

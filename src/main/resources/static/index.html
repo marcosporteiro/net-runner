@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NET-RUNNER | Terminal System</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="terminal">
+        <canvas id="gameCanvas"></canvas>
+        <div id="overlay">
+            <div class="hud-top">
+                <div class="hud-panel">
+                    <div>SYSTEM: <span class="accent">NET-RUNNER v1.3.8</span></div>
+                    <div>STATUS: <span id="connection-status" class="status-tag disconnected">DISCONNECTED</span></div>
+                    <div style="margin-top: 8px;">THEME: <span id="theme-selector" class="accent clickable" title="Click to cycle themes">NET_RUNNER</span></div>
+                </div>
+                <div class="hud-panel" style="text-align: right;">
+                    <div>USER: <span id="player-color-indicator" class="clickable" title="Click to change color" style="margin-right: 8px;">◈</span><span id="player-name" class="accent clickable" title="Click to change name">ANONYMOUS</span></div>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="panel-label">HP:</span>
+                            <span id="player-hp" class="danger">|||||</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="panel-label">SHIELD:</span>
+                            <span id="player-shield" style="color: #bc8cff;">(((</span>
+                        </div>
+                    </div>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="panel-label">CU:</span>
+                            <span id="player-copper" style="color: #b87333;">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="panel-label">AG:</span>
+                            <span id="player-silver" style="color: #c0c0c0;">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="panel-label">AU:</span>
+                            <span id="player-gold" style="color: #ffd700;">0</span>
+                        </div>
+                    </div>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="panel-label">WPN:</span>
+                            <span id="player-weapon" class="accent">BASIC</span>
+                        </div>
+                    </div>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="panel-label">SPD:</span>
+                            <span id="player-speed" class="accent">0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="panel-label">ACC:</span>
+                            <span id="player-accel" class="accent">0.00</span>
+                        </div>
+                    </div>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="panel-label">FPS:</span>
+                            <span id="fps" class="accent">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="panel-label">PING:</span>
+                            <span id="latency" class="accent">--ms</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+
+            <div id="logs-container" style="position: absolute; bottom: 80px; left: 40px; pointer-events: auto;">
+                <div id="logs" class="hud-panel" style="width: 380px; margin-bottom: 10px;">
+                    <div class="log-entry">> Initializing secure connection...</div>
+                    <div class="log-entry">> Waiting for uplink...</div>
+                </div>
+                <div id="chat-container" class="hud-panel" style="width: 380px; display: flex; align-items: center; padding: 8px 15px;">
+                    <span class="accent" style="margin-right: 10px;">></span>
+                    <input type="text" id="chat-input" placeholder="Type command or message..." autocomplete="off" 
+                           style="background: transparent; border: none; color: #c9d1d9; outline: none; flex-grow: 1; font-family: inherit; font-size: 12px;">
+                </div>
+            </div>
+
+            <div id="minimap-container" style="position: absolute; bottom: 80px; right: 40px; pointer-events: auto;">
+                <div id="minimap-panel" class="hud-panel" style="width: 250px; padding: 10px; display: flex; flex-direction: column;">
+                    <div class="panel-header">RADAR_LINK / ACTIVE_SYSTEMS</div>
+                    <canvas id="minimapCanvas" style="height: 180px;"></canvas>
+                    <div id="player-list">
+                        <!-- Players will be listed here -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="tutorial-panel" class="hud-bottom">
+                <div class="hud-panel">
+                    <span class="accent">WASD</span> to navigate | <span class="accent">SPACE/CLICK</span> to shoot | <span class="accent">C</span> to scan | <span class="accent">F11</span> full extraction
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@msgpack/msgpack@3.0.0-beta2/dist.es5+umd/msgpack.min.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>
