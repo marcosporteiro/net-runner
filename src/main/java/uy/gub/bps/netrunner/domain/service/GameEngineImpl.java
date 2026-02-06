@@ -25,6 +25,7 @@ public class GameEngineImpl implements GameEngine {
     private final Map<UUID, java.util.Queue<String>> privateEvents = new ConcurrentHashMap<>();
     private final java.util.Queue<VisualEffect> pendingEffects = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private final Random random = new Random();
+    private final java.util.concurrent.ExecutorService virtualExecutor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
 
     private QuadTree dynamicQuadTree;
     private QuadTree staticQuadTree;
@@ -905,47 +906,51 @@ public class GameEngineImpl implements GameEngine {
         }
 
         // IA de Sentinelas (Optimización: solo actualizar si hay jugadores cerca o es un jefe)
+        List<java.util.concurrent.CompletableFuture<Void>> sentinelFutures = new ArrayList<>();
         for (Sentinel sent : sentinels.values()) {
-            boolean isBoss = "NULL".equals(sent.getName()) || "FIRE_WALL".equals(sent.getName());
-            boolean hasPlayerNearby = isBoss || findFirstInDynamicGrid(sent.getPosition().x(), sent.getPosition().y(), 100, o -> o instanceof Player) != null;
+            sentinelFutures.add(java.util.concurrent.CompletableFuture.runAsync(() -> {
+                boolean isBoss = "NULL".equals(sent.getName()) || "FIRE_WALL".equals(sent.getName());
+                boolean hasPlayerNearby = isBoss || findFirstInDynamicGrid(sent.getPosition().x(), sent.getPosition().y(), 100, o -> o instanceof Player) != null;
 
-            if (!hasPlayerNearby) continue;
+                if (!hasPlayerNearby) return;
 
-            // Movimiento aleatorio suave
-            if (random.nextInt(60) == 0) {
-                double speed = "FIRE_WALL".equals(sent.getName()) ? 0.01 : 0.05;
-                sent.setVx((random.nextDouble() - 0.5) * speed);
-                sent.setVy((random.nextDouble() - 0.5) * speed);
-            }
-            
-            Position nextSentPos = sent.getPosition().move(sent.getVx(), sent.getVy());
-            if (isValidPosition(nextSentPos, sent.getSize()) && !isOccupiedBySolid(nextSentPos, sent.getSize())) {
-                sent.setPosition(nextSentPos);
-            } else {
-                sent.setVx(-sent.getVx());
-                sent.setVy(-sent.getVy());
-            }
-
-            // Disparar si hay jugadores cerca
-            boolean isNull = "NULL".equals(sent.getName());
-            boolean isFireWall = "FIRE_WALL".equals(sent.getName());
-            double detectionRange = isFireWall ? 40 : (isNull ? 25 : 8);
-
-            GameObject targetObj = findFirstInDynamicGrid(sent.getPosition().x(), sent.getPosition().y(), detectionRange, o -> {
-                if (!(o instanceof Player p) || p.getRespawnTimer() != 0) return false;
-                double distSq = Math.pow(p.getPosition().x() - sent.getPosition().x(), 2) + 
-                                Math.pow(p.getPosition().y() - sent.getPosition().y(), 2);
-                return distSq < detectionRange * detectionRange;
-            });
-
-            if (targetObj instanceof Player target) {
-                Weapon w = sent.getWeapon();
-                if (now - sent.getLastShotTime() > w.getFireRate()) {
-                    sent.setLastShotTime(now);
-                    fireWeapon(sent.getId(), sent.getPosition(), sent.getColor(), w, target.getPosition().x(), target.getPosition().y());
+                // Movimiento aleatorio suave
+                if (random.nextInt(60) == 0) {
+                    double speed = "FIRE_WALL".equals(sent.getName()) ? 0.01 : 0.05;
+                    sent.setVx((random.nextDouble() - 0.5) * speed);
+                    sent.setVy((random.nextDouble() - 0.5) * speed);
                 }
-            }
+                
+                Position nextSentPos = sent.getPosition().move(sent.getVx(), sent.getVy());
+                if (isValidPosition(nextSentPos, sent.getSize()) && !isOccupiedBySolid(nextSentPos, sent.getSize())) {
+                    sent.setPosition(nextSentPos);
+                } else {
+                    sent.setVx(-sent.getVx());
+                    sent.setVy(-sent.getVy());
+                }
+
+                // Disparar si hay jugadores cerca
+                boolean isNull = "NULL".equals(sent.getName());
+                boolean isFireWall = "FIRE_WALL".equals(sent.getName());
+                double detectionRange = isFireWall ? 40 : (isNull ? 25 : 8);
+
+                GameObject targetObj = findFirstInDynamicGrid(sent.getPosition().x(), sent.getPosition().y(), detectionRange, o -> {
+                    if (!(o instanceof Player p) || p.getRespawnTimer() != 0) return false;
+                    double distSq = Math.pow(p.getPosition().x() - sent.getPosition().x(), 2) + 
+                                    Math.pow(p.getPosition().y() - sent.getPosition().y(), 2);
+                    return distSq < detectionRange * detectionRange;
+                });
+
+                if (targetObj instanceof Player target) {
+                    Weapon w = sent.getWeapon();
+                    if (now - sent.getLastShotTime() > w.getFireRate()) {
+                        sent.setLastShotTime(now);
+                        fireWeapon(sent.getId(), sent.getPosition(), sent.getColor(), w, target.getPosition().x(), target.getPosition().y());
+                    }
+                }
+            }, virtualExecutor));
         }
+        java.util.concurrent.CompletableFuture.allOf(sentinelFutures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
 
         // Recarga de escudos lenta
         if (random.nextInt(300) < 1) { // ~cada 5 segundos a 60fps
@@ -956,131 +961,140 @@ public class GameEngineImpl implements GameEngine {
             }
         }
         // Actualizar Proyectiles
-        List<UUID> toRemove = new ArrayList<>();
+        List<UUID> toRemove = new java.util.concurrent.CopyOnWriteArrayList<>();
+        List<java.util.concurrent.CompletableFuture<Void>> projectileFutures = new ArrayList<>();
+        
         for (Projectile proj : projectiles.values()) {
-            Position oldPos = proj.getPosition();
-            Position nextPos = oldPos.move(proj.getVx(), proj.getVy());
-            double speed = Math.sqrt(proj.getVx() * proj.getVx() + proj.getVy() * proj.getVy());
-            proj.setDistanceTraveled(proj.getDistanceTraveled() + speed);
+            projectileFutures.add(java.util.concurrent.CompletableFuture.runAsync(() -> {
+                Position oldPos = proj.getPosition();
+                Position nextPos = oldPos.move(proj.getVx(), proj.getVy());
+                double speed = Math.sqrt(proj.getVx() * proj.getVx() + proj.getVy() * proj.getVy());
+                proj.setDistanceTraveled(proj.getDistanceTraveled() + speed);
 
-            boolean expired = proj.getDistanceTraveled() >= proj.getMaxRange();
-            if (!isValidPosition(nextPos, 1) || isOccupiedBySolid(nextPos, 1) || expired) {
-                toRemove.add(proj.getId());
-                if (proj.isExplosive()) {
-                    handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage(), proj.getColor());
-                } else if (!expired) {
-                    pendingEffects.add(new VisualEffect("PROJECTILE_DEATH", proj.getPosition().x(), proj.getPosition().y(), proj.getColor()));
-                }
-                if (!expired) {
-                    // Solo dañar meteorito si no expiró por rango
-                    checkProjectileMeteoriteCollision(nextPos, toRemove, proj.getDamage());
-                }
-            } else {
-                // Check collision with players and Sentinels using spatial grid
-                // If speed is high, check an intermediate point to avoid tunneling
-                boolean hit = false;
-                int steps = speed > 0.4 ? 2 : 1;
-                
-                for (int i = 1; i <= steps; i++) {
-                    double stepFactor = (double) i / steps;
-                    double checkX = oldPos.x() + proj.getVx() * stepFactor;
-                    double checkY = oldPos.y() + proj.getVy() * stepFactor;
+                boolean expired = proj.getDistanceTraveled() >= proj.getMaxRange();
+                if (!isValidPosition(nextPos, 1) || isOccupiedBySolid(nextPos, 1) || expired) {
+                    toRemove.add(proj.getId());
+                    if (proj.isExplosive()) {
+                        handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage(), proj.getColor());
+                    } else if (!expired) {
+                        pendingEffects.add(new VisualEffect("PROJECTILE_DEATH", proj.getPosition().x(), proj.getPosition().y(), proj.getColor()));
+                    }
+                    if (!expired) {
+                        // Solo dañar meteorito si no expiró por rango
+                        checkProjectileMeteoriteCollision(nextPos, (List<UUID>)toRemove, proj.getDamage());
+                    }
+                } else {
+                    // Check collision with players and Sentinels using spatial grid
+                    // If speed is high, check an intermediate point to avoid tunneling
+                    boolean hit = false;
+                    int steps = speed > 0.4 ? 2 : 1;
                     
-                    GameObject hitObj = findFirstInDynamicGrid(checkX, checkY, 2.0, o -> {
-                        if (o instanceof Projectile) return false;
-                        if (o.getId().equals(proj.getOwnerId())) return false;
-                        if (o instanceof Player p && p.getRespawnTimer() != 0) return false;
-
-                        // Detección AABB para mayor precisión en esquinas
-                        double dx = Math.abs(o.getPosition().x() - checkX);
-                        double dy = Math.abs(o.getPosition().y() - checkY);
-                        // El proyectil se considera radio 0.4 para colisiones dinámicas (un poco más pequeño que celdas)
-                        double collisionHalfSize = (o.getSize() / 2.0) + 0.4;
-                        return dx < collisionHalfSize && dy < collisionHalfSize;
-                    });
-
-                    if (hitObj != null) {
-                        proj.setPosition(new Position(checkX, checkY));
-                        if (hitObj instanceof Player p) damagePlayer(p, proj.getOwnerId(), proj.getDamage());
-                        else if (hitObj instanceof Sentinel s) damageSentinel(s, proj.getOwnerId(), proj.getDamage());
+                    for (int i = 1; i <= steps; i++) {
+                        double stepFactor = (double) i / steps;
+                        double checkX = oldPos.x() + proj.getVx() * stepFactor;
+                        double checkY = oldPos.y() + proj.getVy() * stepFactor;
                         
-                        if (proj.isExplosive()) {
-                            handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage(), proj.getColor());
-                        } else {
-                            pendingEffects.add(new VisualEffect("PROJECTILE_DEATH", proj.getPosition().x(), proj.getPosition().y(), proj.getColor()));
+                        GameObject hitObj = findFirstInDynamicGrid(checkX, checkY, 2.0, o -> {
+                            if (o instanceof Projectile) return false;
+                            if (o.getId().equals(proj.getOwnerId())) return false;
+                            if (o instanceof Player p && p.getRespawnTimer() != 0) return false;
+
+                            // Detección AABB para mayor precisión en esquinas
+                            double dx = Math.abs(o.getPosition().x() - checkX);
+                            double dy = Math.abs(o.getPosition().y() - checkY);
+                            // El proyectil se considera radio 0.4 para colisiones dinámicas (un poco más pequeño que celdas)
+                            double collisionHalfSize = (o.getSize() / 2.0) + 0.4;
+                            return dx < collisionHalfSize && dy < collisionHalfSize;
+                        });
+
+                        if (hitObj != null) {
+                            proj.setPosition(new Position(checkX, checkY));
+                            if (hitObj instanceof Player p) damagePlayer(p, proj.getOwnerId(), proj.getDamage());
+                            else if (hitObj instanceof Sentinel s) damageSentinel(s, proj.getOwnerId(), proj.getDamage());
+                            
+                            if (proj.isExplosive()) {
+                                handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage(), proj.getColor());
+                            } else {
+                                pendingEffects.add(new VisualEffect("PROJECTILE_DEATH", proj.getPosition().x(), proj.getPosition().y(), proj.getColor()));
+                            }
+                            toRemove.add(proj.getId());
+                            hit = true;
+                            break;
                         }
-                        toRemove.add(proj.getId());
-                        hit = true;
-                        break;
+                    }
+                    
+                    if (!hit) {
+                        proj.setPosition(nextPos);
                     }
                 }
-                
-                if (!hit) {
-                    proj.setPosition(nextPos);
-                }
-            }
+            }, virtualExecutor));
         }
+        java.util.concurrent.CompletableFuture.allOf(projectileFutures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
         for (UUID id : toRemove) {
             projectiles.remove(id);
         }
 
         // Actualizar Jugadores (Movimiento e Inercia)
+        List<java.util.concurrent.CompletableFuture<Void>> playerFutures = new ArrayList<>();
         for (Player p : players.values()) {
-            if (p.getRespawnTimer() != 0) continue;
-            
-            double nextX = p.getPosition().x() + p.getVx();
-            double nextY = p.getPosition().y() + p.getVy();
-            double speed = Math.sqrt(p.getVx() * p.getVx() + p.getVy() * p.getVy());
-            boolean collision = false;
-            
-            // Colisiones con bordes
-            double r = p.getSize() / 2.0;
-            if (nextX < r) { nextX = r; p.setVx(0); collision = true; }
-            if (nextX >= WIDTH - r) { nextX = WIDTH - r; p.setVx(0); collision = true; }
-            if (nextY < r) { nextY = r; p.setVy(0); collision = true; }
-            if (nextY >= HEIGHT - r) { nextY = HEIGHT - r; p.setVy(0); collision = true; }
-            
-            // Probar movimiento en X
-            Position posWithX = new Position(nextX, p.getPosition().y());
-            if (!isOccupiedBySolid(posWithX, p.getSize())) {
-                p.setPosition(posWithX);
-            } else {
-                p.setVx(0);
-                collision = true;
-            }
-            
-            // Probar movimiento en Y
-            Position posWithY = new Position(p.getPosition().x(), nextY);
-            if (!isOccupiedBySolid(posWithY, p.getSize())) {
-                p.setPosition(posWithY);
-            } else {
-                p.setVy(0);
-                collision = true;
-            }
-
-            if (collision && speed > 0.05) {
-                applyEnvironmentalDamage(p, speed);
-            }
-            
-            // Aplicar Fricción
-            p.setVx(p.getVx() * FRICTION);
-            p.setVy(p.getVy() * FRICTION);
-
-            // Re-aplicar límite de velocidad si el scanner está activo
-            if (p.isScannerActive()) {
-                double currentMaxSpeed = MAX_SPEED / 2.0;
-                double currentSpeed = Math.sqrt(p.getVx() * p.getVx() + p.getVy() * p.getVy());
-                if (currentSpeed > currentMaxSpeed) {
-                    p.setVx((p.getVx() / currentSpeed) * currentMaxSpeed);
-                    p.setVy((p.getVy() / currentSpeed) * currentMaxSpeed);
+            playerFutures.add(java.util.concurrent.CompletableFuture.runAsync(() -> {
+                if (p.getRespawnTimer() != 0) return;
+                
+                double nextX = p.getPosition().x() + p.getVx();
+                double nextY = p.getPosition().y() + p.getVy();
+                double speed = Math.sqrt(p.getVx() * p.getVx() + p.getVy() * p.getVy());
+                boolean collision = false;
+                
+                // Colisiones con bordes
+                double r = p.getSize() / 2.0;
+                if (nextX < r) { nextX = r; p.setVx(0); collision = true; }
+                if (nextX >= WIDTH - r) { nextX = WIDTH - r; p.setVx(0); collision = true; }
+                if (nextY < r) { nextY = r; p.setVy(0); collision = true; }
+                if (nextY >= HEIGHT - r) { nextY = HEIGHT - r; p.setVy(0); collision = true; }
+                
+                // Probar movimiento en X
+                Position posWithX = new Position(nextX, p.getPosition().y());
+                if (!isOccupiedBySolid(posWithX, p.getSize())) {
+                    p.setPosition(posWithX);
+                } else {
+                    p.setVx(0);
+                    collision = true;
                 }
-            }
-            
-            if (Math.abs(p.getVx()) < 0.01) p.setVx(0);
-            if (Math.abs(p.getVy()) < 0.01) p.setVy(0);
-            
-            checkCollisions(p, p.getPosition());
+                
+                // Probar movimiento en Y
+                Position posWithY = new Position(p.getPosition().x(), nextY);
+                if (!isOccupiedBySolid(posWithY, p.getSize())) {
+                    p.setPosition(posWithY);
+                } else {
+                    p.setVy(0);
+                    collision = true;
+                }
+
+                if (collision && speed > 0.05) {
+                    applyEnvironmentalDamage(p, speed);
+                }
+                
+                // Aplicar Fricción
+                p.setVx(p.getVx() * FRICTION);
+                p.setVy(p.getVy() * FRICTION);
+
+                // Re-aplicar límite de velocidad si el scanner está activo
+                if (p.isScannerActive()) {
+                    double currentMaxSpeed = MAX_SPEED / 2.0;
+                    double currentSpeed = Math.sqrt(p.getVx() * p.getVx() + p.getVy() * p.getVy());
+                    if (currentSpeed > currentMaxSpeed) {
+                        p.setVx((p.getVx() / currentSpeed) * currentMaxSpeed);
+                        p.setVy((p.getVy() / currentSpeed) * currentMaxSpeed);
+                    }
+                }
+                
+                if (Math.abs(p.getVx()) < 0.01) p.setVx(0);
+                if (Math.abs(p.getVy()) < 0.01) p.setVy(0);
+                
+                checkCollisions(p, p.getPosition());
+            }, virtualExecutor));
         }
+        java.util.concurrent.CompletableFuture.allOf(playerFutures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
     }
 
     private void applyEnvironmentalDamage(Player p, double speed) {
