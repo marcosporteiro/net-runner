@@ -113,37 +113,23 @@ public class GameEngineImpl implements GameEngine {
 
                 if (px < 0 || px >= WIDTH || py < 0 || py >= HEIGHT) continue;
 
-                if (dist > radius - 0.8 && dist < radius + 0.5) {
-                    // Perímetro: Asteroides normales - Más denso
+                if (dist <= radius + 0.5) {
                     Position pos = new Position(px, py);
                     if (!isOccupied(pos)) {
+                        boolean isInterior = dist < radius - 0.8;
+                        boolean hasResources = isInterior && random.nextInt(10) < 6; // 60% chance in interior
+                        
+                        Ore.OreType type = selectOreType();
                         Meteorite met = Meteorite.builder()
                                 .position(pos)
                                 .symbol("#")
-                                .color("#484f58")
-                                .name("METEORITE")
-                                .hasResources(false)
-                                .health(1)
+                                .color(hasResources ? type.color : "#484f58")
+                                .name(hasResources ? "ORE_METEORITE" : "METEORITE")
+                                .hasResources(hasResources)
+                                .resourceType(hasResources ? type : null)
+                                .health(hasResources ? 3.0 : 1.0)
                                 .build();
                         worldObjects.put(met.getId(), met);
-                    }
-                } else if (dist < radius - 0.8) {
-                    // Interior: Asteroides con recursos - Menos cantidad y tipos variados
-                    if (random.nextInt(10) < 3) { // 30% densidad interior (antes 40%)
-                        Position pos = new Position(px, py);
-                        if (!isOccupied(pos)) {
-                            Ore.OreType type = selectOreType();
-                            Meteorite met = Meteorite.builder()
-                                    .position(pos)
-                                    .symbol("#")
-                                    .color(type.color)
-                                    .name("ORE_METEORITE")
-                                    .hasResources(true)
-                                    .resourceType(type)
-                                    .health(3)
-                                    .build();
-                            worldObjects.put(met.getId(), met);
-                        }
                     }
                 }
             }
@@ -158,10 +144,10 @@ public class GameEngineImpl implements GameEngine {
     }
 
     private void spawnMeteoriteCluster(int centerX, int centerY) {
-        int size = 5 + random.nextInt(10);
+        int size = 8 + random.nextInt(12); // Aumentado de 5-15 a 8-20
         for (int i = 0; i < size; i++) {
-            double ox = random.nextGaussian() * 2.5;
-            double oy = random.nextGaussian() * 2.5;
+            double ox = random.nextGaussian() * 1.5; // Reducida dispersión de 2.5 a 1.5
+            double oy = random.nextGaussian() * 1.5;
             int px = (int) Math.round(centerX + ox);
             int py = (int) Math.round(centerY + oy);
             
@@ -169,7 +155,7 @@ public class GameEngineImpl implements GameEngine {
                 Position pos = new Position(px, py);
                 if (!isOccupied(pos)) {
                     Ore.OreType type = selectOreType();
-                    boolean hasResources = random.nextInt(10) < 2; // 20% chance (antes 30%)
+                    boolean hasResources = random.nextInt(10) < 3; // 30% chance (antes 20%)
                     Meteorite met = Meteorite.builder()
                             .position(pos)
                             .symbol("#")
@@ -177,7 +163,7 @@ public class GameEngineImpl implements GameEngine {
                             .name(hasResources ? "ORE_METEORITE" : "METEORITE")
                             .hasResources(hasResources)
                             .resourceType(hasResources ? type : null)
-                            .health(hasResources ? 3 : 1)
+                            .health(hasResources ? 3.0 : 1.0)
                             .build();
                     worldObjects.put(met.getId(), met);
                 }
@@ -203,13 +189,14 @@ public class GameEngineImpl implements GameEngine {
                 .symbol(SYMBOLS[random.nextInt(SYMBOLS.length)])
                 .color(COLORS[random.nextInt(COLORS.length)])
                 .score(0)
-                .hp(5)
-                .maxHp(5)
+                .hp(5.0)
+                .maxHp(5.0)
                 .shield(0)
                 .maxShield(0)
                 .copper(0)
                 .silver(0)
                 .gold(0)
+                .level(1)
                 .lastDirection("UP")
                 .build();
         players.put(id, player);
@@ -527,7 +514,7 @@ public class GameEngineImpl implements GameEngine {
         }
     }
 
-    private void createProjectile(UUID ownerId, Position pos, double vx, double vy, String color, double spread, double range, int damage, boolean explosive, double angleOffset, String symbol) {
+    private void createProjectile(UUID ownerId, Position pos, double vx, double vy, String color, double spread, double range, double damage, boolean explosive, double angleOffset, String symbol) {
         double angle = Math.atan2(vy, vx) + angleOffset;
         angle += (random.nextDouble() - 0.5) * spread;
         
@@ -558,11 +545,11 @@ public class GameEngineImpl implements GameEngine {
         pendingEvents.add("[#58a6ff]Agent " + oldName + " re-identified as " + uniqueName);
     }
 
-    private void damagePlayer(Player hitPlayer, UUID shooterId, int damage) {
+    private void damagePlayer(Player hitPlayer, UUID shooterId, double damage) {
         pendingEffects.add(new VisualEffect("HIT", hitPlayer.getPosition().x(), hitPlayer.getPosition().y(), hitPlayer.getColor()));
-        int remainingDamage = damage;
+        double remainingDamage = damage;
         if (hitPlayer.getShield() > 0) {
-            int shieldDamage = Math.min(hitPlayer.getShield(), remainingDamage);
+            double shieldDamage = Math.min(hitPlayer.getShield(), remainingDamage);
             hitPlayer.setShield(hitPlayer.getShield() - shieldDamage);
             remainingDamage -= shieldDamage;
         }
@@ -585,12 +572,12 @@ public class GameEngineImpl implements GameEngine {
         }
     }
 
-    private void damageSentinel(Sentinel sent, UUID shooterId, int damage) {
+    private void damageSentinel(Sentinel sent, UUID shooterId, double damage) {
         pendingEffects.add(new VisualEffect("HIT", sent.getPosition().x(), sent.getPosition().y(), sent.getColor()));
         
-        int remainingDamage = damage;
+        double remainingDamage = damage;
         if (sent.getShield() > 0) {
-            int shieldDamage = Math.min(sent.getShield(), remainingDamage);
+            double shieldDamage = Math.min(sent.getShield(), remainingDamage);
             sent.setShield(sent.getShield() - shieldDamage);
             remainingDamage -= shieldDamage;
         }
@@ -625,11 +612,11 @@ public class GameEngineImpl implements GameEngine {
 
     private void addExperience(Player player, int amount) {
         player.setExp(player.getExp() + amount);
-        int expNeeded = player.getLevel() * 500;
+        int expNeeded = Math.max(1, player.getLevel()) * 500;
         if (player.getExp() >= expNeeded) {
             player.setExp(player.getExp() - expNeeded);
             player.setLevel(player.getLevel() + 1);
-            player.setHp(5); // Heal on level up
+            player.setHp(5.0); // Heal on level up
             player.setShield(0);
             
             // Progresión de escudos: +1 de capacidad cada nivel hasta un máximo de 3
@@ -654,7 +641,7 @@ public class GameEngineImpl implements GameEngine {
         }
     }
 
-    private void handleExplosion(Position pos, UUID shooterId, int damage) {
+    private void handleExplosion(Position pos, UUID shooterId, double damage) {
         pendingEffects.add(new VisualEffect("EXPLOSION", pos.x(), pos.y(), "#ff4500"));
         double explosionRadius = 2.5;
         
@@ -691,7 +678,7 @@ public class GameEngineImpl implements GameEngine {
         }
     }
 
-    private void checkProjectileMeteoriteCollision(Position pos, List<UUID> toRemoveList, int damage) {
+    private void checkProjectileMeteoriteCollision(Position pos, List<UUID> toRemoveList, double damage) {
         int ix = (int) Math.round(pos.x());
         int iy = (int) Math.round(pos.y());
         
@@ -781,7 +768,7 @@ public class GameEngineImpl implements GameEngine {
                 if (now >= p.getRespawnTimer()) {
                     p.setRespawnTimer(0);
                     p.setPosition(getRandomEmptyPosition());
-                    p.setHp(5);
+                    p.setHp(5.0);
                     p.setShield(0);
                     p.setVx(0);
                     p.setVy(0);
@@ -1029,8 +1016,8 @@ public class GameEngineImpl implements GameEngine {
                             case SILVER -> 2;
                             case GOLD -> 3;
                         };
-                        int oldHp = player.getHp();
-                        player.setHp(Math.min(5, player.getHp() + healAmount));
+                        double oldHp = player.getHp();
+                        player.setHp(Math.min(5.0, player.getHp() + healAmount));
                         if (player.getHp() > oldHp) {
                             pendingEvents.add("[" + player.getColor() + "]" + player.getName() + " [#3fb950]integrity restored (+" + (player.getHp() - oldHp) + " HP)");
                         }

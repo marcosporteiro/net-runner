@@ -24,7 +24,7 @@ public class Projectile implements GameObject {
     @Builder.Default
     private double maxRange = 20;
     @Builder.Default
-    private int damage = 1;
+    private double damage = 1;
     private boolean explosive;
     private UUID ownerId;
     @JsonProperty("c")

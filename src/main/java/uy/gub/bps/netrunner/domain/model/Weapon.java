@@ -21,7 +21,7 @@ public class Weapon {
     @JsonProperty("n")
     private String name;
     private double range;
-    private int damage;
+    private double damage;
     private long fireRate; // Cooldown in ms
     private double spread;
     private ShotPattern pattern;
@@ -45,7 +45,7 @@ public class Weapon {
         return Weapon.builder()
                 .name("STREET_SWEEPER")
                 .range(8)
-                .damage(1) // Each pellet
+                .damage(0.4) // Each pellet (total 2.0 if all 5 hit)
                 .fireRate(800)
                 .spread(0.55) // High spread
                 .pattern(ShotPattern.SPREAD)

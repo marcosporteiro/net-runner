@@ -16,56 +16,68 @@
                     <div>STATUS: <span id="connection-status" class="status-tag disconnected">DISCONNECTED</span></div>
                     <div style="margin-top: 8px;">THEME: <span id="theme-selector" class="accent clickable" title="Click to cycle themes">NET_RUNNER</span></div>
                 </div>
-                <div class="hud-panel" style="text-align: right;">
-                    <div>USER: <span id="player-color-indicator" class="clickable" title="Click to change color" style="margin-right: 8px;">◈</span><span id="player-name" class="accent clickable" title="Click to change name">ANONYMOUS</span></div>
-                    <div class="stats-row">
-                        <div class="stat-item">
-                            <span class="panel-label">HP:</span>
-                            <span id="player-hp" class="danger">|||||</span>
+                <div class="hud-panel stats-panel" style="text-align: right;">
+                    <div class="user-info">
+                        <span id="player-color-indicator" class="clickable" title="Click to change color">◈</span>
+                        <span id="player-name" class="accent clickable" title="Click to change name">ANONYMOUS</span>
+                    </div>
+                    
+                    <div class="vital-stats">
+                        <div class="stat-group">
+                            <span class="panel-label">HP</span>
+                            <span id="player-hp" class="danger" style="letter-spacing: 2px;">|||||</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="panel-label">SHIELD:</span>
-                            <span id="player-shield" style="color: #bc8cff;">(((</span>
+                        <div class="stat-group">
+                            <span class="panel-label">SHD</span>
+                            <span id="player-shield" style="color: #bc8cff; letter-spacing: 2px;">(((</span>
                         </div>
                     </div>
-                    <div class="stats-row">
+
+                    <div class="progression-stats">
+                        <span class="panel-label">LVL</span>
+                        <span id="player-level" class="accent">1</span>
+                        <span id="player-xp" class="xp-bar">---</span>
+                    </div>
+
+                    <div class="resource-stats">
                         <div class="stat-item">
-                            <span class="panel-label">CU:</span>
-                            <span id="player-copper" style="color: #b87333;">0</span>
+                            <span class="panel-label" style="color: #b87333;">CU</span>
+                            <span id="player-copper">0</span>
                         </div>
                         <div class="stat-item">
-                            <span class="panel-label">AG:</span>
-                            <span id="player-silver" style="color: #c0c0c0;">0</span>
+                            <span class="panel-label" style="color: #c0c0c0;">AG</span>
+                            <span id="player-silver">0</span>
                         </div>
                         <div class="stat-item">
-                            <span class="panel-label">AU:</span>
-                            <span id="player-gold" style="color: #ffd700;">0</span>
+                            <span class="panel-label" style="color: #ffd700;">AU</span>
+                            <span id="player-gold">0</span>
                         </div>
                     </div>
-                    <div class="stats-row">
+
+                    <div class="combat-stats">
+                        <span class="panel-label">WPN</span>
+                        <span id="player-weapon" class="accent">BASIC</span>
+                    </div>
+
+                    <div class="engine-stats">
                         <div class="stat-item">
-                            <span class="panel-label">WPN:</span>
-                            <span id="player-weapon" class="accent">BASIC</span>
+                            <span class="panel-label">SPD</span>
+                            <span id="player-speed">0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="panel-label">ACC</span>
+                            <span id="player-accel">0.00</span>
                         </div>
                     </div>
-                    <div class="stats-row">
+
+                    <div class="system-stats">
                         <div class="stat-item">
-                            <span class="panel-label">SPD:</span>
-                            <span id="player-speed" class="accent">0.00</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="panel-label">ACC:</span>
-                            <span id="player-accel" class="accent">0.00</span>
-                        </div>
-                    </div>
-                    <div class="stats-row">
-                        <div class="stat-item">
-                            <span class="panel-label">FPS:</span>
-                            <span id="fps" class="accent">--</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="panel-label">PING:</span>
+                            <span class="panel-label">LAT</span>
                             <span id="latency" class="accent">--ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span id="fps" class="success">--</span>
+                            <span class="panel-label">FPS</span>
                         </div>
                     </div>
                 </div>

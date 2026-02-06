@@ -237,6 +237,61 @@ body, html {
     margin-top: 5px;
 }
 
+.stats-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 220px;
+}
+
+.user-info {
+    font-weight: bold;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+    margin-bottom: 2px;
+}
+
+.vital-stats, .resource-stats, .engine-stats {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.progression-stats {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    font-size: 11px;
+}
+
+.xp-bar {
+    color: var(--warning);
+}
+
+.system-stats {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 8px;
+    border-top: 1px dotted var(--border);
+    padding-top: 6px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 15px;
+    opacity: 0.8;
+}
+
+.system-stats .panel-label {
+    font-size: 8px;
+    letter-spacing: 1px;
+}
+
+.stat-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .stat-item {
     font-size: 12px;
     display: flex;

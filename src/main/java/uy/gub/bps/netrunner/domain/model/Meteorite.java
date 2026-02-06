@@ -25,7 +25,7 @@ public class Meteorite implements GameObject {
     private String name;
     private boolean hasResources;
     private Ore.OreType resourceType;
-    private int health;
+    private double health;
 
     @Override
     public UUID getId() {

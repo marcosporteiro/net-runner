@@ -25,13 +25,13 @@ public class Player implements GameObject {
     private String name;
     private int score;
     @JsonProperty("h")
-    private int hp;
+    private double hp;
     @Builder.Default
-    private int maxHp = 5;
+    private double maxHp = 5;
     @JsonProperty("sh")
-    private int shield;
+    private double shield;
     @Builder.Default
-    private int maxShield = 0;
+    private double maxShield = 0;
     @JsonProperty("co")
     private int copper;
     @JsonProperty("si")

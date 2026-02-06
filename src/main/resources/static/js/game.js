@@ -5,6 +5,8 @@ const playerNameSpan = document.getElementById('player-name');
 const playerColorIndicator = document.getElementById('player-color-indicator');
 const playerHpSpan = document.getElementById('player-hp');
 const playerShieldSpan = document.getElementById('player-shield');
+const playerLevelSpan = document.getElementById('player-level');
+const playerXpSpan = document.getElementById('player-xp');
 const playerCopperSpan = document.getElementById('player-copper');
 const playerSilverSpan = document.getElementById('player-silver');
 const playerGoldSpan = document.getElementById('player-gold');
@@ -541,6 +543,17 @@ function connect() {
                 const shieldBars = '('.repeat(Math.max(0, myPlayer.shield));
                 playerShieldSpan.textContent = shieldBars || 'EMPTY';
 
+                if (playerLevelSpan) playerLevelSpan.textContent = myPlayer.level || 1;
+                if (playerXpSpan) {
+                    const expNeeded = (myPlayer.level || 1) * 500;
+                    const xpPercent = Math.floor(((myPlayer.exp || 0) / expNeeded) * 100);
+                    // Usar una barra de progreso visual con caracteres
+                    const barSize = 10;
+                    const filledSize = Math.floor((xpPercent / 100) * barSize);
+                    const bar = '■'.repeat(filledSize) + '□'.repeat(barSize - filledSize);
+                    playerXpSpan.textContent = `${bar} ${xpPercent}%`;
+                }
+
                 playerCopperSpan.textContent = myPlayer.copper;
                 playerSilverSpan.textContent = myPlayer.silver;
                 playerGoldSpan.textContent = myPlayer.gold;
@@ -601,9 +614,17 @@ function updatePlayerList() {
                 Math.pow(p.position.y - myPlayer.position.y, 2)
             );
         });
-        players.sort((a, b) => a._distance - b._distance);
+        // Filtrar y ordenar: Mi jugador siempre primero, luego por distancia
+        players.sort((a, b) => {
+            if (a.id === myPlayerId) return -1;
+            if (b.id === myPlayerId) return 1;
+            return a._distance - b._distance;
+        });
+        // Limitar a los 8 más cercanos (incluyéndome)
+        if (players.length > 8) players.length = 8;
     } else {
         players.sort((a, b) => b.score - a.score);
+        if (players.length > 8) players.length = 8;
     }
     
     // Solo actualizar el DOM si la lista cambió
@@ -808,6 +829,23 @@ function render() {
 
     // 2. Dibujar Cuadrícula Dinámica (Optimizado para mundos grandes)
     const scaledCellSize = CELL_SIZE * cameraZoom;
+
+    // 2.0 Pintar celdas de meteoritos y ores
+    ctx.globalAlpha = 0.15;
+    gameState.objects.forEach(obj => {
+        if (obj.name === 'METEORITE' || obj.name.includes('ORE')) {
+            const x = obj.position.x * scaledCellSize + offsetX;
+            const y = obj.position.y * scaledCellSize + offsetY;
+
+            // Culling visual para el fondo de celda
+            if (x < -scaledCellSize || x > canvas.width || y < -scaledCellSize || y > canvas.height) return;
+
+            ctx.fillStyle = obj.color;
+            ctx.fillRect(x, y, scaledCellSize, scaledCellSize);
+        }
+    });
+    ctx.globalAlpha = 1.0;
+
     ctx.strokeStyle = COLORS.grid;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -852,14 +890,14 @@ function render() {
         
         ctx.globalAlpha = twinkle;
         ctx.fillStyle = s.color;
-        ctx.font = `${(s.size + 3) * cameraZoom}px monospace`;
+        ctx.font = `${(s.size + 3) * cameraZoom}px "Cascadia Code", "Courier New", Courier, monospace`;
         ctx.fillText(s.symbol, x, y);
     });
     ctx.globalAlpha = 1.0;
 
     // Configurar fuente para metadatos
-    const statsFont = '11px "Cascadia Code", monospace';
-    const defaultFont = `bold ${CELL_SIZE - 6}px 'Cascadia Code', 'Courier New', monospace`;
+    const statsFont = '11px "Cascadia Code", "Courier New", Courier, monospace';
+    const defaultFont = `bold ${CELL_SIZE - 6}px "Cascadia Code", "Courier New", Courier, monospace`;
 
     // 3. Dibujar objetos (Players, Meteoritos, etc)
     ctx.textAlign = 'center';
@@ -923,7 +961,7 @@ function render() {
 
         // Elementos dinámicos (Nombre y barras)
         if (obj.hp !== undefined) {
-            ctx.font = `${11 * Math.max(0.8, cameraZoom)}px "Cascadia Code", monospace`;
+            ctx.font = `${11 * Math.max(0.8, cameraZoom)}px "Cascadia Code", "Courier New", Courier, monospace`;
             ctx.fillStyle = obj.color;
             const label = obj.id === myPlayerId ? `YOU (${obj.score})` : `${obj.name} (${obj.score})`;
             ctx.fillText(label, x, y - (CELL_SIZE * cameraZoom) / 2 - 8 * cameraZoom);
@@ -1104,7 +1142,7 @@ function render() {
                 // Texto de información
                 const textAlpha = Math.min(1.0, scanElapsed / 800) * scannerAlpha;
                 ctx.globalAlpha = textAlpha;
-                ctx.font = `bold ${10 * Math.max(0.8, cameraZoom)}px "Cascadia Code", monospace`;
+                ctx.font = `bold ${10 * Math.max(0.8, cameraZoom)}px "Cascadia Code", "Courier New", Courier, monospace`;
                 ctx.fillStyle = scanData.isEnemy ? COLORS.danger : COLORS.accent;
                 ctx.textAlign = 'center';
                 const scanLabel = `${scanData.label} [${scanData.distance} AU]`;
@@ -1123,10 +1161,10 @@ function render() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.textAlign = 'center';
         ctx.fillStyle = COLORS.danger;
-        ctx.font = 'bold 30px monospace';
+        ctx.font = 'bold 30px "Cascadia Code", "Courier New", Courier, monospace';
         ctx.fillText('CRITICAL_FAILURE: CONNECTION_LOST', canvas.width / 2, canvas.height / 2 - 30);
         ctx.fillStyle = COLORS.accent;
-        ctx.font = '14px monospace';
+        ctx.font = '14px "Cascadia Code", "Courier New", Courier, monospace';
         ctx.fillText('> ATTEMPTING_SECURE_REBOOT...', canvas.width / 2, canvas.height / 2 + 20);
         if (Date.now() % 1000 < 500) {
             ctx.fillStyle = COLORS.fg;

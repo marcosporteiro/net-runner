@@ -29,14 +29,14 @@ public class Sentinel implements GameObject {
     private String name = "SENTINEL";
     @Builder.Default
     @JsonProperty("h")
-    private int hp = 3;
+    private double hp = 3;
     @Builder.Default
-    private int maxHp = 3;
+    private double maxHp = 3;
     @Builder.Default
     @JsonProperty("sh")
-    private int shield = 0;
+    private double shield = 0;
     @Builder.Default
-    private int maxShield = 0;
+    private double maxShield = 0;
     @Builder.Default
     @JsonProperty("vx")
     private double vx = 0;
