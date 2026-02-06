@@ -1,23 +1,20 @@
 # Etapa de construcción (Build)
-# Usamos una imagen de Maven que nos permita usar JDK 25
-FROM maven:3.9.9-eclipse-temurin-21-alpine AS build
+# Usamos directamente la imagen de OpenJDK 25 EA para compilar
+FROM openjdk:25-ea-jdk-slim AS build
 WORKDIR /app
 
-# Copiar el archivo pom.xml
-COPY pom.xml .
+# Instalamos Maven manualmente ya que no hay imagen oficial con JDK 25 todavía
+RUN apt-get update && apt-get install -y maven
 
-# Descargar dependencias
-# Nota: Maven usará JDK 21 para descargar, lo cual es compatible
+# Copiar el archivo pom.xml y descargar dependencias
+COPY pom.xml .
 RUN mvn dependency:go-offline
 
-# Copiar el código fuente
+# Copiar el código fuente y construir
 COPY src ./src
-
-# Construir el jar omitiendo tests para acelerar y evitar problemas de entorno
 RUN mvn clean package -DskipTests
 
 # Etapa de ejecución (Runtime)
-# Usamos la imagen oficial de OpenJDK 25 (Early Access)
 FROM openjdk:25-ea-jdk-slim
 WORKDIR /app
 COPY --from=build /app/target/*.jar ./app.jar
