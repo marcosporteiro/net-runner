@@ -79,22 +79,66 @@ public class QuadTree {
     }
 
     public void query(Rectangle range, List<GameObject> found) {
-        if (!boundary.intersects(range)) {
+        query(range.x, range.y, range.w, range.h, obj -> {
+            if (range.contains(obj.getPosition())) {
+                found.add(obj);
+            }
+        });
+    }
+
+    public void query(double x, double y, double w, double h, java.util.function.Consumer<GameObject> action) {
+        if (!intersects(x, y, w, h)) {
             return;
         }
 
         if (divided) {
-            nw.query(range, found);
-            ne.query(range, found);
-            sw.query(range, found);
-            se.query(range, found);
+            nw.query(x, y, w, h, action);
+            ne.query(x, y, w, h, action);
+            sw.query(x, y, w, h, action);
+            se.query(x, y, w, h, action);
         } else {
             for (GameObject obj : objects) {
-                if (range.contains(obj.getPosition())) {
-                    found.add(obj);
+                Position p = obj.getPosition();
+                if (p.x() >= x - w && p.x() <= x + w &&
+                    p.y() >= y - h && p.y() <= y + h) {
+                    action.accept(obj);
                 }
             }
         }
+    }
+
+    public GameObject findFirst(double x, double y, double w, double h, java.util.function.Predicate<GameObject> filter) {
+        if (!intersects(x, y, w, h)) {
+            return null;
+        }
+
+        if (divided) {
+            GameObject found = nw.findFirst(x, y, w, h, filter);
+            if (found != null) return found;
+            found = ne.findFirst(x, y, w, h, filter);
+            if (found != null) return found;
+            found = sw.findFirst(x, y, w, h, filter);
+            if (found != null) return found;
+            return se.findFirst(x, y, w, h, filter);
+        } else {
+            for (GameObject obj : objects) {
+                Position p = obj.getPosition();
+                if (p.x() >= x - w && p.x() <= x + w &&
+                    p.y() >= y - h && p.y() <= y + h) {
+                    if (filter.test(obj)) {
+                        return obj;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean intersects(double x, double y, double w, double h) {
+        return !(x - w > boundary.x + boundary.w ||
+                 x + w < boundary.x - boundary.w ||
+                 y - h > boundary.y + boundary.h ||
+                 y + h < boundary.y - boundary.h);
     }
 
     public void getAllBoundaries(List<Rectangle> boundaries) {

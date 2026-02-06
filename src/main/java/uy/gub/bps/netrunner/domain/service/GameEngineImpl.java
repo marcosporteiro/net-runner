@@ -704,10 +704,22 @@ public class GameEngineImpl implements GameEngine {
         pendingEffects.add(new VisualEffect("EXPLOSION", pos.x(), pos.y(), color, 2));
         double explosionRadius = 2.5;
         
+        // Buscamos en un rango ampliado para encontrar objetos grandes
         List<GameObject> nearby = getNearbyObjects(pos.x(), pos.y(), explosionRadius);
         for (GameObject obj : nearby) {
-            double dist = Math.sqrt(Math.pow(obj.getPosition().x() - pos.x(), 2) + Math.pow(obj.getPosition().y() - pos.y(), 2));
-            if (dist < explosionRadius) {
+            // Ignorar al propio dueño del proyectil para evitar suicidios por explosión
+            if (obj.getId().equals(shooterId)) continue;
+            
+            double halfSize = obj.getSize() / 2.0;
+            // Distancia del centro de la explosión al punto más cercano de la caja de colisión del objeto
+            double closestX = Math.clamp(pos.x(), obj.getPosition().x() - halfSize, obj.getPosition().x() + halfSize);
+            double closestY = Math.clamp(pos.y(), obj.getPosition().y() - halfSize, obj.getPosition().y() + halfSize);
+            
+            double dx = pos.x() - closestX;
+            double dy = pos.y() - closestY;
+            double distSq = dx * dx + dy * dy;
+
+            if (distSq < explosionRadius * explosionRadius) {
                 if (obj instanceof Player p) {
                     if (p.getRespawnTimer() == 0) damagePlayer(p, shooterId, damage);
                 } else if (obj instanceof Sentinel s) {
@@ -738,26 +750,27 @@ public class GameEngineImpl implements GameEngine {
     }
 
     private void checkProjectileMeteoriteCollision(Position pos, List<UUID> toRemoveList, double damage) {
-        getNearbyObjects(pos.x(), pos.y(), 2.0).stream()
-                .filter(o -> o instanceof Meteorite)
-                .filter(o -> {
-                    double oh = o.getSize() / 2.0;
-                    // Margen de colisión para el proyectil (size 1)
-                    double ph = 0.5; 
-                    return Math.abs(o.getPosition().x() - pos.x()) < (oh + ph) &&
-                           Math.abs(o.getPosition().y() - pos.y()) < (oh + ph);
-                })
-                .findFirst()
-                .ifPresent(obj -> {
-                    if (obj instanceof Meteorite met) {
-                        met.setHealth(met.getHealth() - damage);
-                        if (met.getHealth() <= 0) {
-                            destroyMeteorite(met);
-                        } else {
-                            pendingEffects.add(new VisualEffect("HIT", met.getPosition().x(), met.getPosition().y(), met.getColor()));
-                        }
-                    }
-                });
+        // Usamos un radio de búsqueda generoso para encontrar meteoritos grandes
+        GameObject hit = findFirstInGrid(pos.x(), pos.y(), 10.0, o -> {
+            if (!(o instanceof Meteorite met)) return false;
+            
+            // Detección AABB consistente con isOccupiedBySolid
+            double dx = Math.abs(met.getPosition().x() - pos.x());
+            double dy = Math.abs(met.getPosition().y() - pos.y());
+            // El proyectil se considera que ocupa una celda (radio 0.5)
+            double combinedHalfSize = (met.getSize() / 2.0) + 0.5;
+            
+            return dx < combinedHalfSize && dy < combinedHalfSize;
+        });
+        
+        if (hit instanceof Meteorite met) {
+            met.setHealth(met.getHealth() - damage);
+            if (met.getHealth() <= 0) {
+                destroyMeteorite(met);
+            } else {
+                pendingEffects.add(new VisualEffect("HIT", met.getPosition().x(), met.getPosition().y(), met.getColor()));
+            }
+        }
     }
 
     private synchronized void updateStaticGrid() {
@@ -774,19 +787,38 @@ public class GameEngineImpl implements GameEngine {
                 .forEach(dynamicQuadTree::insert);
     }
 
+    private synchronized void queryGrid(double x, double y, double radius, java.util.function.Consumer<GameObject> action) {
+        // Expandimos el rango de búsqueda para incluir objetos grandes cuyo centro esté fuera del radio
+        double range = radius + 4.0;
+        dynamicQuadTree.query(x, y, range, range, action);
+        staticQuadTree.query(x, y, range, range, action);
+    }
+
     private synchronized List<GameObject> getNearbyObjects(double x, double y, double radius) {
         List<GameObject> nearby = new ArrayList<>();
-        QuadTree.Rectangle range = new QuadTree.Rectangle(x, y, radius, radius);
-        dynamicQuadTree.query(range, nearby);
-        staticQuadTree.query(range, nearby);
+        double range = radius + 4.0;
+        dynamicQuadTree.query(x, y, range, range, nearby::add);
+        staticQuadTree.query(x, y, range, range, nearby::add);
         return nearby;
     }
 
     private synchronized List<GameObject> getNearbyDynamicObjects(double x, double y, double radius) {
         List<GameObject> nearby = new ArrayList<>();
-        QuadTree.Rectangle range = new QuadTree.Rectangle(x, y, radius, radius);
-        dynamicQuadTree.query(range, nearby);
+        double range = radius + 4.0;
+        dynamicQuadTree.query(x, y, range, range, nearby::add);
         return nearby;
+    }
+
+    private synchronized GameObject findFirstInGrid(double x, double y, double radius, java.util.function.Predicate<GameObject> filter) {
+        double range = radius + 4.0;
+        GameObject found = dynamicQuadTree.findFirst(x, y, range, range, filter);
+        if (found != null) return found;
+        return staticQuadTree.findFirst(x, y, range, range, filter);
+    }
+
+    private synchronized GameObject findFirstInDynamicGrid(double x, double y, double radius, java.util.function.Predicate<GameObject> filter) {
+        double range = radius + 4.0;
+        return dynamicQuadTree.findFirst(x, y, range, range, filter);
     }
 
     @Override
@@ -836,26 +868,21 @@ public class GameEngineImpl implements GameEngine {
         });
 
         // Aplicar entradas activas a los jugadores vivos
-        activeInputs.forEach((playerId, inputs) -> {
-            Player p = players.get(playerId);
+        for (Map.Entry<UUID, java.util.Set<String>> entry : activeInputs.entrySet()) {
+            Player p = players.get(entry.getKey());
             if (p != null && p.getRespawnTimer() == 0) {
-                inputs.forEach(dir -> applyAcceleration(p, dir));
+                for (String dir : entry.getValue()) {
+                    applyAcceleration(p, dir);
+                }
             }
-        });
+        }
 
         // IA de Sentinelas (Optimización: solo actualizar si hay jugadores cerca o es un jefe)
-        List<Player> activePlayers = players.values().stream()
-                .filter(p -> p.getRespawnTimer() == 0)
-                .toList();
-
-        sentinels.values().forEach(sent -> {
+        for (Sentinel sent : sentinels.values()) {
             boolean isBoss = "NULL".equals(sent.getName()) || "FIRE_WALL".equals(sent.getName());
-            boolean hasPlayerNearby = isBoss || activePlayers.stream().anyMatch(p -> 
-                Math.abs(p.getPosition().x() - sent.getPosition().x()) < 100 &&
-                Math.abs(p.getPosition().y() - sent.getPosition().y()) < 100
-            );
+            boolean hasPlayerNearby = isBoss || findFirstInDynamicGrid(sent.getPosition().x(), sent.getPosition().y(), 100, o -> o instanceof Player) != null;
 
-            if (!hasPlayerNearby) return;
+            if (!hasPlayerNearby) continue;
 
             // Movimiento aleatorio suave
             if (random.nextInt(60) == 0) {
@@ -877,33 +904,35 @@ public class GameEngineImpl implements GameEngine {
             boolean isFireWall = "FIRE_WALL".equals(sent.getName());
             double detectionRange = isFireWall ? 40 : (isNull ? 25 : 8);
 
-            getNearbyDynamicObjects(sent.getPosition().x(), sent.getPosition().y(), detectionRange).stream()
-                    .filter(o -> o instanceof Player p && p.getRespawnTimer() == 0)
-                    .map(o -> (Player) o)
-                    .filter(p -> Math.sqrt(Math.pow(p.getPosition().x() - sent.getPosition().x(), 2) + 
-                                           Math.pow(p.getPosition().y() - sent.getPosition().y(), 2)) < detectionRange)
-                    .findFirst()
-                    .ifPresent(target -> {
-                        Weapon w = sent.getWeapon();
-                        if (now - sent.getLastShotTime() > w.getFireRate()) {
-                            sent.setLastShotTime(now);
-                            fireWeapon(sent.getId(), sent.getPosition(), sent.getColor(), w, target.getPosition().x(), target.getPosition().y());
-                        }
-                    });
-        });
+            GameObject targetObj = findFirstInDynamicGrid(sent.getPosition().x(), sent.getPosition().y(), detectionRange, o -> {
+                if (!(o instanceof Player p) || p.getRespawnTimer() != 0) return false;
+                double distSq = Math.pow(p.getPosition().x() - sent.getPosition().x(), 2) + 
+                                Math.pow(p.getPosition().y() - sent.getPosition().y(), 2);
+                return distSq < detectionRange * detectionRange;
+            });
+
+            if (targetObj instanceof Player target) {
+                Weapon w = sent.getWeapon();
+                if (now - sent.getLastShotTime() > w.getFireRate()) {
+                    sent.setLastShotTime(now);
+                    fireWeapon(sent.getId(), sent.getPosition(), sent.getColor(), w, target.getPosition().x(), target.getPosition().y());
+                }
+            }
+        }
 
         // Recarga de escudos lenta
         if (random.nextInt(300) < 1) { // ~cada 5 segundos a 60fps
-            players.values().stream()
-                    .filter(p -> p.getRespawnTimer() == 0)
-                    .forEach(p -> {
-                        if (p.getShield() < p.getMaxShield()) p.setShield(p.getShield() + 1);
-                    });
+            for (Player p : players.values()) {
+                if (p.getRespawnTimer() == 0 && p.getShield() < p.getMaxShield()) {
+                    p.setShield(p.getShield() + 1);
+                }
+            }
         }
         // Actualizar Proyectiles
         List<UUID> toRemove = new ArrayList<>();
-        projectiles.values().forEach(proj -> {
-            Position nextPos = proj.getPosition().move(proj.getVx(), proj.getVy());
+        for (Projectile proj : projectiles.values()) {
+            Position oldPos = proj.getPosition();
+            Position nextPos = oldPos.move(proj.getVx(), proj.getVy());
             double speed = Math.sqrt(proj.getVx() * proj.getVx() + proj.getVy() * proj.getVy());
             proj.setDistanceTraveled(proj.getDistanceTraveled() + speed);
 
@@ -920,94 +949,111 @@ public class GameEngineImpl implements GameEngine {
                     checkProjectileMeteoriteCollision(nextPos, toRemove, proj.getDamage());
                 }
             } else {
-                proj.setPosition(nextPos);
                 // Check collision with players and Sentinels using spatial grid
-                getNearbyDynamicObjects(nextPos.x(), nextPos.y(), 8.0).stream()
-                        .filter(o -> (o instanceof Player || o instanceof Sentinel) && !o.getId().equals(proj.getOwnerId()))
-                        .filter(o -> {
-                            double threshold = o.getSize() * 0.5;
-                            // Un pequeño margen extra para que no sea frustrante
-                            if (o.getSize() == 1) threshold = 0.7; 
-                            
-                            if (o instanceof Player p) return p.getRespawnTimer() == 0 && Math.abs(p.getPosition().x() - nextPos.x()) < threshold && Math.abs(p.getPosition().y() - nextPos.y()) < threshold;
-                            if (o instanceof Sentinel s) return Math.abs(s.getPosition().x() - nextPos.x()) < threshold && Math.abs(s.getPosition().y() - nextPos.y()) < threshold;
-                            return false;
-                        })
-                        .findFirst()
-                        .ifPresent(hitObj -> {
-                            if (hitObj instanceof Player p) damagePlayer(p, proj.getOwnerId(), proj.getDamage());
-                            else if (hitObj instanceof Sentinel s) damageSentinel(s, proj.getOwnerId(), proj.getDamage());
-                            
-                            if (proj.isExplosive()) {
-                                handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage(), proj.getColor());
-                            } else {
-                                pendingEffects.add(new VisualEffect("PROJECTILE_DEATH", proj.getPosition().x(), proj.getPosition().y(), proj.getColor()));
-                            }
-                            toRemove.add(proj.getId());
-                        });
+                // If speed is high, check an intermediate point to avoid tunneling
+                boolean hit = false;
+                int steps = speed > 0.4 ? 2 : 1;
+                
+                for (int i = 1; i <= steps; i++) {
+                    double stepFactor = (double) i / steps;
+                    double checkX = oldPos.x() + proj.getVx() * stepFactor;
+                    double checkY = oldPos.y() + proj.getVy() * stepFactor;
+                    
+                    GameObject hitObj = findFirstInDynamicGrid(checkX, checkY, 2.0, o -> {
+                        if (o instanceof Projectile) return false;
+                        if (o.getId().equals(proj.getOwnerId())) return false;
+                        if (o instanceof Player p && p.getRespawnTimer() != 0) return false;
+
+                        // Detección AABB para mayor precisión en esquinas
+                        double dx = Math.abs(o.getPosition().x() - checkX);
+                        double dy = Math.abs(o.getPosition().y() - checkY);
+                        // El proyectil se considera radio 0.4 para colisiones dinámicas (un poco más pequeño que celdas)
+                        double collisionHalfSize = (o.getSize() / 2.0) + 0.4;
+                        return dx < collisionHalfSize && dy < collisionHalfSize;
+                    });
+
+                    if (hitObj != null) {
+                        proj.setPosition(new Position(checkX, checkY));
+                        if (hitObj instanceof Player p) damagePlayer(p, proj.getOwnerId(), proj.getDamage());
+                        else if (hitObj instanceof Sentinel s) damageSentinel(s, proj.getOwnerId(), proj.getDamage());
+                        
+                        if (proj.isExplosive()) {
+                            handleExplosion(proj.getPosition(), proj.getOwnerId(), proj.getDamage(), proj.getColor());
+                        } else {
+                            pendingEffects.add(new VisualEffect("PROJECTILE_DEATH", proj.getPosition().x(), proj.getPosition().y(), proj.getColor()));
+                        }
+                        toRemove.add(proj.getId());
+                        hit = true;
+                        break;
+                    }
+                }
+                
+                if (!hit) {
+                    proj.setPosition(nextPos);
+                }
             }
-        });
-        toRemove.forEach(id -> {
+        }
+        for (UUID id : toRemove) {
             projectiles.remove(id);
-        });
+        }
 
         // Actualizar Jugadores (Movimiento e Inercia)
-        players.values().stream()
-                .filter(p -> p.getRespawnTimer() == 0)
-                .forEach(p -> {
-                    double nextX = p.getPosition().x() + p.getVx();
-                    double nextY = p.getPosition().y() + p.getVy();
-                    double speed = Math.sqrt(p.getVx() * p.getVx() + p.getVy() * p.getVy());
-                    boolean collision = false;
-                    
-                    // Colisiones con bordes
-                    double r = p.getSize() / 2.0;
-                    if (nextX < r) { nextX = r; p.setVx(0); collision = true; }
-                    if (nextX >= WIDTH - r) { nextX = WIDTH - r; p.setVx(0); collision = true; }
-                    if (nextY < r) { nextY = r; p.setVy(0); collision = true; }
-                    if (nextY >= HEIGHT - r) { nextY = HEIGHT - r; p.setVy(0); collision = true; }
-                    
-                    // Probar movimiento en X
-                    Position posWithX = new Position(nextX, p.getPosition().y());
-                    if (!isOccupiedBySolid(posWithX, p.getSize())) {
-                        p.setPosition(posWithX);
-                    } else {
-                        p.setVx(0);
-                        collision = true;
-                    }
-                    
-                    // Probar movimiento en Y
-                    Position posWithY = new Position(p.getPosition().x(), nextY);
-                    if (!isOccupiedBySolid(posWithY, p.getSize())) {
-                        p.setPosition(posWithY);
-                    } else {
-                        p.setVy(0);
-                        collision = true;
-                    }
+        for (Player p : players.values()) {
+            if (p.getRespawnTimer() != 0) continue;
+            
+            double nextX = p.getPosition().x() + p.getVx();
+            double nextY = p.getPosition().y() + p.getVy();
+            double speed = Math.sqrt(p.getVx() * p.getVx() + p.getVy() * p.getVy());
+            boolean collision = false;
+            
+            // Colisiones con bordes
+            double r = p.getSize() / 2.0;
+            if (nextX < r) { nextX = r; p.setVx(0); collision = true; }
+            if (nextX >= WIDTH - r) { nextX = WIDTH - r; p.setVx(0); collision = true; }
+            if (nextY < r) { nextY = r; p.setVy(0); collision = true; }
+            if (nextY >= HEIGHT - r) { nextY = HEIGHT - r; p.setVy(0); collision = true; }
+            
+            // Probar movimiento en X
+            Position posWithX = new Position(nextX, p.getPosition().y());
+            if (!isOccupiedBySolid(posWithX, p.getSize())) {
+                p.setPosition(posWithX);
+            } else {
+                p.setVx(0);
+                collision = true;
+            }
+            
+            // Probar movimiento en Y
+            Position posWithY = new Position(p.getPosition().x(), nextY);
+            if (!isOccupiedBySolid(posWithY, p.getSize())) {
+                p.setPosition(posWithY);
+            } else {
+                p.setVy(0);
+                collision = true;
+            }
 
-                    if (collision && speed > 0.05) {
-                        applyEnvironmentalDamage(p, speed);
-                    }
-                    
-                    // Aplicar Fricción
-                    p.setVx(p.getVx() * FRICTION);
-                    p.setVy(p.getVy() * FRICTION);
+            if (collision && speed > 0.05) {
+                applyEnvironmentalDamage(p, speed);
+            }
+            
+            // Aplicar Fricción
+            p.setVx(p.getVx() * FRICTION);
+            p.setVy(p.getVy() * FRICTION);
 
-                    // Re-aplicar límite de velocidad si el scanner está activo
-                    if (p.isScannerActive()) {
-                        double currentMaxSpeed = MAX_SPEED / 2.0;
-                        double currentSpeed = Math.sqrt(p.getVx() * p.getVx() + p.getVy() * p.getVy());
-                        if (currentSpeed > currentMaxSpeed) {
-                            p.setVx((p.getVx() / currentSpeed) * currentMaxSpeed);
-                            p.setVy((p.getVy() / currentSpeed) * currentMaxSpeed);
-                        }
-                    }
-                    
-                    if (Math.abs(p.getVx()) < 0.01) p.setVx(0);
-                    if (Math.abs(p.getVy()) < 0.01) p.setVy(0);
-                    
-                    checkCollisions(p, p.getPosition());
-                });
+            // Re-aplicar límite de velocidad si el scanner está activo
+            if (p.isScannerActive()) {
+                double currentMaxSpeed = MAX_SPEED / 2.0;
+                double currentSpeed = Math.sqrt(p.getVx() * p.getVx() + p.getVy() * p.getVy());
+                if (currentSpeed > currentMaxSpeed) {
+                    p.setVx((p.getVx() / currentSpeed) * currentMaxSpeed);
+                    p.setVy((p.getVy() / currentSpeed) * currentMaxSpeed);
+                }
+            }
+            
+            if (Math.abs(p.getVx()) < 0.01) p.setVx(0);
+            if (Math.abs(p.getVy()) < 0.01) p.setVy(0);
+            
+            checkCollisions(p, p.getPosition());
+        }
     }
 
     private void applyEnvironmentalDamage(Player p, double speed) {
@@ -1085,8 +1131,7 @@ public class GameEngineImpl implements GameEngine {
     }
 
     private void checkCollisions(Player player, Position pos) {
-        List<GameObject> nearby = getNearbyObjects(pos.x(), pos.y(), 2.0);
-        for (GameObject obj : nearby) {
+        queryGrid(pos.x(), pos.y(), 2.0, obj -> {
             // Colisión con Sentinelas (Daño por contacto)
             if (obj instanceof Sentinel sent) {
                 double threshold = (player.getSize() + sent.getSize()) / 2.0;
@@ -1130,7 +1175,7 @@ public class GameEngineImpl implements GameEngine {
                     pendingEffects.add(new VisualEffect("COLLECT", obj.getPosition().x(), obj.getPosition().y(), obj.getColor()));
                 }
             }
-        }
+        });
     }
 
     private void manageSentinels() {
@@ -1156,19 +1201,16 @@ public class GameEngineImpl implements GameEngine {
 
     private boolean isOccupiedBySolid(Position pos, int size) {
         double halfSize = size / 2.0;
-        QuadTree.Rectangle range = new QuadTree.Rectangle(pos.x(), pos.y(), halfSize + 1.0, halfSize + 1.0);
-        List<GameObject> nearby = new ArrayList<>();
-        staticQuadTree.query(range, nearby);
-        for (GameObject o : nearby) {
+        // Aumentamos el rango de búsqueda para encontrar objetos grandes
+        GameObject found = findFirstInGrid(pos.x(), pos.y(), halfSize + 1.0, o -> {
             if (o instanceof Meteorite) {
                 double oh = o.getSize() / 2.0;
-                if (pos.x() - halfSize < o.getPosition().x() + oh && pos.x() + halfSize > o.getPosition().x() - oh &&
-                    pos.y() - halfSize < o.getPosition().y() + oh && pos.y() + halfSize > o.getPosition().y() - oh) {
-                    return true;
-                }
+                return Math.abs(pos.x() - o.getPosition().x()) < (halfSize + oh) &&
+                       Math.abs(pos.y() - o.getPosition().y()) < (halfSize + oh);
             }
-        }
-        return false;
+            return false;
+        });
+        return found != null;
     }
 
     private boolean isValidPosition(Position pos, int size) {

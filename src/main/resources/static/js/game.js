@@ -245,8 +245,8 @@ class ScannerEffect {
         ctx.beginPath();
         ctx.arc(this.x * cameraZoom + offsetX, this.y * cameraZoom + offsetY, this.radius * cameraZoom, 0, Math.PI * 2);
         ctx.strokeStyle = COLORS.accent;
-        ctx.globalAlpha = this.life * 0.8;
-        ctx.lineWidth = 3 * cameraZoom;
+        ctx.globalAlpha = this.life * 0.5;
+        ctx.lineWidth = 2 * cameraZoom;
         ctx.stroke();
         
         // Segundo anillo más fino para efecto de "escaneo de barrido"
@@ -254,7 +254,7 @@ class ScannerEffect {
             ctx.beginPath();
             ctx.arc(this.x * cameraZoom + offsetX, this.y * cameraZoom + offsetY, (this.radius - 20) * cameraZoom, 0, Math.PI * 2);
             ctx.lineWidth = 1 * cameraZoom;
-            ctx.globalAlpha = this.life * 0.4;
+            ctx.globalAlpha = this.life * 0.25;
             ctx.stroke();
         }
         
@@ -1310,12 +1310,12 @@ function render() {
                 const progress = scanActiveTime / bootDuration;
                 const flicker = Math.sin(scanActiveTime * 0.05) * 0.2 + 0.8;
                 const noise = (Math.random() * 0.15);
-                scannerAlpha = (flicker - noise) * progress;
+                scannerAlpha = (flicker - noise) * progress * 0.8;
             } else if (isFadingOut) {
-                scannerAlpha = 1.0 - (timeSinceDeactivate / SCANNER_FADE_DURATION);
+                scannerAlpha = (1.0 - (timeSinceDeactivate / SCANNER_FADE_DURATION)) * 0.8;
             } else if (isScannerActive) {
                 // Parpadeo sutil un poco más pronunciado cuando está activo
-                const idleFlicker = Math.sin(now * 0.015) * 0.12 + 0.88;
+                const idleFlicker = Math.sin(now * 0.015) * 0.12 + 0.78;
                 const subtleNoise = (Math.random() * 0.06);
                 scannerAlpha = idleFlicker - subtleNoise;
             }
@@ -1336,7 +1336,7 @@ function render() {
                 ctx.arc(x, y, outlineSize / 2, 0, Math.PI * 2);
                 ctx.strokeStyle = scanData.isEnemy ? COLORS.danger : COLORS.accent;
                 ctx.lineWidth = 2;
-                const alpha = Math.min(0.8, scanElapsed / 500) * scannerAlpha;
+                const alpha = Math.min(0.5, scanElapsed / 500) * scannerAlpha;
                 ctx.globalAlpha = alpha;
                 ctx.stroke();
 
@@ -1366,7 +1366,7 @@ function render() {
                 ctx.stroke();
 
                 // Texto de información
-                const textAlpha = Math.min(1.0, scanElapsed / 800) * scannerAlpha;
+                const textAlpha = Math.min(0.7, scanElapsed / 800) * scannerAlpha;
                 ctx.globalAlpha = textAlpha;
                 ctx.font = `bold ${10 * Math.max(0.8, cameraZoom)}px "Cascadia Code", "Courier New", Courier, monospace`;
                 ctx.fillStyle = scanData.isEnemy ? COLORS.danger : COLORS.accent;
