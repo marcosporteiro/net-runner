@@ -32,8 +32,8 @@ let lastMoveTime = Date.now();
 let inactivityTime = 0;
 
 const CELL_SIZE = 24;
-const WORLD_WIDTH = 500;
-const WORLD_HEIGHT = 500;
+const WORLD_WIDTH = 200;
+const WORLD_HEIGHT = 200;
 
 let socket = null;
 let gameState = { objects: [] };
@@ -78,7 +78,7 @@ const JOYSTICK_RADIUS = 60;
 
 // Sistema de Estrellas Decorativas
 const stars = [];
-for (let i = 0; i < 8000; i++) {
+for (let i = 0; i < 1500; i++) {
     const isWhite = Math.random() < 0.9;
     stars.push({
         x: Math.random() * WORLD_WIDTH,

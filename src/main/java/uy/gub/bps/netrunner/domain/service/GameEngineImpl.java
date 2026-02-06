@@ -29,8 +29,8 @@ public class GameEngineImpl implements GameEngine {
 
     private QuadTree dynamicQuadTree;
     private QuadTree staticQuadTree;
-    private static final int WIDTH = 500;
-    private static final int HEIGHT = 500;
+    private static final int WIDTH = 200;
+    private static final int HEIGHT = 200;
     private static final double ACCEL = 0.012;
     private static final double FRICTION = 1.0;
     private static final double MAX_SPEED = 0.08;
@@ -64,30 +64,30 @@ public class GameEngineImpl implements GameEngine {
 
     private void initWorld() {
         // Añadir Clusters de Meteoritos
-        for (int i = 0; i < 400; i++) {
+        for (int i = 0; i < 80; i++) {
             spawnMeteoriteCluster(random.nextInt(WIDTH), random.nextInt(HEIGHT));
         }
 
         // Añadir Clusters Grandes con Recursos
-        for (int i = 0; i < 150; i++) {
+        for (int i = 0; i < 30; i++) {
             spawnLargeResourceCluster(random.nextInt(WIDTH), random.nextInt(HEIGHT));
         }
         
         // Añadir DataNodes iniciales
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 200; i++) {
             spawnDataNode();
         }
 
         // Añadir meteoritos grandes sueltos
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 10; i++) {
             spawnStandaloneMeteorite(2);
         }
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 5; i++) {
             spawnStandaloneMeteorite(3);
         }
 
-        // Añadir Agujeros de Gusano (Máximo 3 pares)
-        for (int i = 0; i < 3; i++) {
+        // Añadir Agujeros de Gusano (Máximo 2 pares)
+        for (int i = 0; i < 2; i++) {
             spawnWormholePair();
         }
 
