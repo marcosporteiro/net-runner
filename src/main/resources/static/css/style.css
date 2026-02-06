@@ -60,23 +60,27 @@ body, html {
     border: 1px solid var(--border);
     image-rendering: pixelated;
     flex-grow: 1;
+    cursor: pointer;
 }
 
 .hud-panel {
     background: var(--panel-bg);
     border: 1px solid var(--border);
-    padding: 12px 20px;
-    border-radius: 6px;
-    font-size: 13px;
-    backdrop-filter: blur(4px);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
-    transition: all 0.3s ease, opacity 0.5s ease;
+    padding: 10px 15px;
+    border-radius: 4px;
+    font-size: 12px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     pointer-events: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .hud-panel:hover {
     border-color: var(--accent);
-    box-shadow: 0 4px 25px rgba(88, 166, 255, 0.15);
+    box-shadow: 0 0 20px rgba(88, 166, 255, 0.2);
+    transform: translateY(-1px);
 }
 
 .hud-top {
@@ -96,11 +100,14 @@ body, html {
 
 .panel-header {
     font-size: 10px;
-    color: var(--muted);
-    margin-bottom: 8px;
+    font-weight: bold;
+    color: var(--accent);
+    margin-bottom: 10px;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 4px;
-    letter-spacing: 1px;
+    padding-bottom: 6px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    opacity: 0.9;
 }
 
 #player-list {
@@ -133,6 +140,23 @@ body, html {
 
 .player-entry:hover {
     background: rgba(255, 255, 255, 0.05);
+}
+
+#minimap-panel.expanded {
+    width: 600px !important;
+    height: 750px !important;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+}
+
+#minimap-panel.expanded #minimapCanvas {
+    height: 550px !important;
+}
+
+#minimap-panel.expanded #player-list {
+    max-height: 150px;
 }
 
 .clickable {
@@ -254,7 +278,9 @@ body, html {
 .vital-stats, .resource-stats, .engine-stats {
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
+    gap: 15px;
+    border-bottom: 1px dotted rgba(48, 54, 61, 0.5);
+    padding-bottom: 4px;
 }
 
 .progression-stats {
@@ -272,9 +298,6 @@ body, html {
 .system-stats {
     font-size: 9px;
     color: var(--muted);
-    margin-top: 8px;
-    border-top: 1px dotted var(--border);
-    padding-top: 6px;
     display: flex;
     justify-content: flex-end;
     gap: 15px;
@@ -293,17 +316,20 @@ body, html {
 }
 
 .stat-item {
-    font-size: 12px;
+    font-size: 11px;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
+    padding: 2px 0;
 }
 
 .panel-label {
-    font-size: 11px;
+    font-size: 10px;
+    font-weight: bold;
     color: var(--muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
+    min-width: 35px;
 }
 
 /* Scanline effect for terminal feel */
@@ -321,3 +347,17 @@ body, html {
     pointer-events: none;
 }
 
+
+.combat-stats {
+    padding: 4px 0;
+    font-size: 11px;
+}
+
+#chat-input::placeholder {
+    color: var(--muted);
+    opacity: 0.5;
+}
+
+#chat-input:focus {
+    color: var(--accent);
+}

@@ -43,10 +43,12 @@ let lastMessageTime = 0;
 const keysDown = {};
 let particles = [];
 let damageFlash = 0;
+let teleportFlash = 0;
 let explosionFlash = 0;
 let scannerEffects = [];
 let scannedEntities = []; // Almacena info de escaneo: { id, label, distance, startTime }
 let isScannerActive = false;
+let isMinimapExpanded = false;
 let lastScannerToggleTime = 0;
 const SCANNER_COOLDOWN = 1000; // 1 segundo de cooldown
 const AU_IN_CELLS = 10;
@@ -129,7 +131,7 @@ class Particle {
                 const symbols = ['•', 'o', 'O', '°', '*'];
                 this.symbol = symbols[Math.floor(Math.random() * symbols.length)];
             } else {
-                this.symbol = type === 'DEBRIS' ? '#' : (type === 'COLLECT' ? '✧' : (type === 'HIT' ? '×' : (type === 'PROJECTILE_DEATH' ? '·' : '•')));
+                this.symbol = type === 'DEBRIS' ? '#' : (type === 'COLLECT' ? '✧' : (type === 'HIT' ? '×' : (type === 'PROJECTILE_DEATH' ? '·' : (type === 'TELEPORT' ? '@' : '•'))));
             }
         }
     }
@@ -267,6 +269,118 @@ let scannerFadeFactor = 0; // 0 a 1 para manejar transiciones suaves
 let lastScannerDeactivateTime = 0;
 const SCANNER_FADE_DURATION = 500;
     
+    function drawWormhole(obj, ctx, offsetX, offsetY, now) {
+        const x = obj.position.x * CELL_SIZE * cameraZoom + offsetX;
+        const y = obj.position.y * CELL_SIZE * cameraZoom + offsetY;
+        const size = (obj.size || 5) * CELL_SIZE * cameraZoom;
+    
+        ctx.save();
+    
+        // 0. Brillo de fondo potente (Bloom)
+        const bloomSize = size * (1.2 + 0.1 * Math.sin(now * 0.002));
+        const glowGrad = ctx.createRadialGradient(x, y, 0, x, y, bloomSize);
+        glowGrad.addColorStop(0, obj.color);
+        glowGrad.addColorStop(0.2, obj.color + "88");
+        glowGrad.addColorStop(0.5, obj.color + "33");
+        glowGrad.addColorStop(1, "transparent");
+        
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = 0.4 + 0.1 * Math.sin(now * 0.002);
+        ctx.fillStyle = glowGrad;
+        ctx.beginPath();
+        ctx.arc(x, y, bloomSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // 0.1 Rastro hacia el destino (Partículas direccionales)
+        if (obj.linkedId) {
+            const linked = gameState.objects.find(o => o.id === obj.linkedId);
+            if (linked) {
+                const tx = linked.position.x * CELL_SIZE * cameraZoom + offsetX;
+                const ty = linked.position.y * CELL_SIZE * cameraZoom + offsetY;
+                const angleToTarget = Math.atan2(ty - y, tx - x);
+                const distToTarget = Math.sqrt(Math.pow(tx - x, 2) + Math.pow(ty - y, 2));
+
+                // Dibujar pequeñas partículas de datos que fluyen hacia el otro extremo
+                const flowCount = 12;
+                for (let i = 0; i < flowCount; i++) {
+                    const flowT = (now * 0.0008 + i / flowCount) % 1.0;
+                    // Dibujar un rastro que se extiende más para indicar dirección
+                    const maxFlowDist = 160 * cameraZoom; 
+                    const flowDist = maxFlowDist * flowT; 
+                    
+                    ctx.fillStyle = obj.color;
+                    ctx.font = `${3.5 * cameraZoom}px monospace`;
+                    
+                    // Dibujar 3 símbolos seguidos para dar sensación de "partícula larga" (streak)
+                    for (let j = 0; j < 3; j++) {
+                        const subDist = flowDist - (j * 5 * cameraZoom);
+                        if (subDist < 0) continue;
+                        
+                        const fx = x + Math.cos(angleToTarget) * subDist;
+                        const fy = y + Math.sin(angleToTarget) * subDist;
+                        
+                        // Desvanecer la cola de la partícula
+                        ctx.globalAlpha = (1.0 - flowT) * 0.6 * (1.0 - j * 0.3);
+                        ctx.fillText('@', fx, fy);
+                    }
+                }
+            }
+        }
+
+        // Dibujar el símbolo central con mucho brillo
+        const sprite = getSprite(obj.symbol, obj.color, 100, obj.size || 5);
+        const padding = 25 * cameraZoom;
+        const sSize = (obj.size || 5) * CELL_SIZE * cameraZoom + padding * 2;
+        ctx.drawImage(sprite, x - sSize / 2, y - sSize / 2, sSize, sSize);
+
+        // Efecto espiral de partículas verdes
+        const numParticles = 30;
+        const time = now * 0.001;
+        ctx.fillStyle = obj.color;
+    
+        for (let i = 0; i < numParticles; i++) {
+            const ratio = i / numParticles;
+            const angle = time + (ratio * Math.PI * 2);
+            // El radio oscila para crear un efecto de "succión" o espiral dinámico
+            const spiralRadius = (size / 1.4) * (0.8 + 0.2 * Math.sin(time * 1.5 + ratio * Math.PI * 4));
+        
+            const px = x + Math.cos(angle) * spiralRadius;
+            const py = y + Math.sin(angle) * spiralRadius;
+        
+            const pSize = (2.2 + Math.sin(time * 2 + i * 2)) * cameraZoom;
+        
+            ctx.font = `${pSize * 3}px monospace`;
+            ctx.fillText('@', px, py);
+        
+            // Brillo para algunas partículas exteriores
+            if (i % 2 === 0) {
+                ctx.shadowBlur = 25 * cameraZoom;
+                ctx.shadowColor = obj.color;
+                ctx.fillText('@', px, py);
+                ctx.shadowBlur = 0;
+            }
+        }
+    
+        // Partículas interiores rotando en sentido contrario
+        const innerParticles = 20;
+        for (let i = 0; i < innerParticles; i++) {
+            const ratio = i / innerParticles;
+            const angle = -time * 1.2 + (ratio * Math.PI * 2);
+            const spiralRadius = (size / 3) * (1 + 0.3 * Math.cos(time * 0.8 + ratio * Math.PI));
+        
+            const px = x + Math.cos(angle) * spiralRadius;
+            const py = y + Math.sin(angle) * spiralRadius;
+        
+            ctx.globalAlpha = 0.7;
+            ctx.font = `${4 * cameraZoom}px monospace`;
+            ctx.fillText('@', px, py);
+        }
+    
+        ctx.restore();
+    }
+
     function performScan() {
         if (!myPlayer) return;
         
@@ -316,6 +430,7 @@ function updateScannedEntities() {
                         obj.hp !== undefined ? `Vessel: ${obj.name}` : obj.name;
 
             const isEnemy = (obj.hp !== undefined && obj.id !== myPlayerId) || obj.name === 'SENTINEL' || obj.name === 'NULL' || obj.name === 'PROJECTILE';
+            const isWormhole = obj.name === 'WORMHOLE';
             const existing = currentScannedMap.get(obj.id);
 
             return {
@@ -324,6 +439,7 @@ function updateScannedEntities() {
                 distance: (distCells / AU_IN_CELLS).toFixed(2),
                 distRaw: distCells,
                 isEnemy: isEnemy,
+                isWormhole: isWormhole,
                 startTime: existing ? existing.startTime : now
             };
         })
@@ -519,7 +635,7 @@ function normalize(data) {
         'o': 'objects', 'ev': 'events', 'ef': 'effects',
         'i': 'id', 'p': 'position', 's': 'symbol', 'c': 'color', 'n': 'name',
         'h': 'hp', 'sh': 'shield', 'co': 'copper', 'si': 'silver', 'go': 'gold',
-        'l': 'level', 'e': 'exp', 'w': 'weapon', 't': 'type', 'sz': 'size',
+        'l': 'level', 'li': 'linkedId', 'e': 'exp', 'w': 'weapon', 't': 'type', 'sz': 'size',
         'pi': 'playerId', 'pn': 'playerName', 'd': 'payload', 'dbg': 'debugData'
     };
 
@@ -590,6 +706,19 @@ function connect() {
 
         gameState = data;
         
+        // Buscar mi jugador inmediatamente para tener datos actualizados para efectos
+        if (myPlayerId) {
+            const prevHp = myPlayer ? myPlayer.hp : null;
+            const prevShield = myPlayer ? myPlayer.shield : null;
+            const foundPlayer = gameState.objects.find(obj => obj.id === myPlayerId);
+            if (foundPlayer) {
+                if (prevHp !== null && (foundPlayer.hp < prevHp || foundPlayer.shield < prevShield)) {
+                    damageFlash = 1.0;
+                }
+                myPlayer = foundPlayer;
+            }
+        }
+        
         // Procesar eventos
         if (gameState.events && gameState.events.length > 0) {
             gameState.events.forEach(e => log(e));
@@ -628,6 +757,20 @@ function connect() {
                 } else if (e.type === 'PROJECTILE_DEATH') {
                     count = 6;
                     lifeFactor = 2.0;
+                } else if (e.type === 'TELEPORT') {
+                    count = 40;
+                    lifeFactor = 5.0;
+                    pattern = 'ring';
+
+                    // Efecto de destello verde si es el jugador el que llega o sale
+                    if (myPlayer) {
+                        const dx = e.x - myPlayer.position.x;
+                        const dy = e.y - myPlayer.position.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < 10) {
+                            teleportFlash = 1.0;
+                        }
+                    }
                 }
                 spawnParticles(e.x, e.y, e.color, e.type, count, 0, 0, lifeFactor, pattern);
             });
@@ -655,19 +798,9 @@ function connect() {
             }
         }
 
-        // Buscar mi jugador para la cámara
-        if (myPlayerId) {
-            const prevHp = myPlayer ? myPlayer.hp : null;
-            const prevShield = myPlayer ? myPlayer.shield : null;
-            
-            myPlayer = gameState.objects.find(obj => obj.id === myPlayerId);
-            if (myPlayer) {
-                // Detectar daño
-                if (prevHp !== null && (myPlayer.hp < prevHp || myPlayer.shield < prevShield)) {
-                    damageFlash = 1.0;
-                }
-
-                playerNameSpan.textContent = myPlayer.name;
+        // Actualizar datos del jugador en la UI
+        if (myPlayer) {
+            playerNameSpan.textContent = myPlayer.name;
                 playerColorIndicator.style.color = myPlayer.color;
                 
                 const hpBars = '|'.repeat(Math.max(0, myPlayer.hp));
@@ -718,7 +851,6 @@ function connect() {
                     statusSpan.className = 'status-tag connected';
                 }
             }
-        }
         
         updatePlayerList();
     };
@@ -744,21 +876,20 @@ function sendInput(type, payload) {
 
 let lastPlayerListJson = '';
 function updatePlayerList() {
-    const players = gameState.objects.filter(obj => obj.hp !== undefined);
+    const entities = gameState.objects.filter(obj => 
+        ((obj.hp !== undefined && obj.hp > 0) || obj.name === 'WORMHOLE') && 
+        obj.id !== myPlayerId
+    );
     
     if (myPlayer) {
-        players.forEach(p => {
+        entities.forEach(p => {
             p._distance = Math.sqrt(
                 Math.pow(p.position.x - myPlayer.position.x, 2) + 
                 Math.pow(p.position.y - myPlayer.position.y, 2)
             );
         });
-        // Filtrar y ordenar: Mi jugador siempre primero, luego por distancia
-        players.sort((a, b) => {
-            if (a.id === myPlayerId) return -1;
-            if (b.id === myPlayerId) return 1;
-            
-            // Prioridad para jefes (FIRE_WALL y NULL) para que no desaparezcan de la lista
+        // Ordenar: Jefes primero, luego por distancia
+        entities.sort((a, b) => {
             const aIsBoss = a.name === 'FIRE_WALL' || a.name === 'NULL';
             const bIsBoss = b.name === 'FIRE_WALL' || b.name === 'NULL';
             if (aIsBoss && !bIsBoss) return -1;
@@ -766,17 +897,16 @@ function updatePlayerList() {
 
             return a._distance - b._distance;
         });
-        // Limitar a los 8 más cercanos (incluyéndome)
-        if (players.length > 8) players.length = 8;
+        // Limitar a los 20 más cercanos
+        if (entities.length > 20) entities.length = 20;
     } else {
-        players.sort((a, b) => b.score - a.score);
-        if (players.length > 8) players.length = 8;
+        entities.sort((a, b) => (b.score || 0) - (a.score || 0));
+        if (entities.length > 20) entities.length = 20;
     }
     
     // Solo actualizar el DOM si la lista cambió
-    const currentJson = JSON.stringify(players.map(p => ({
+    const currentJson = JSON.stringify(entities.map(p => ({
         id: p.id, 
-        score: p.score, 
         name: p.name, 
         color: p.color, 
         dist: p._distance ? p._distance.toFixed(1) : 0
@@ -786,7 +916,7 @@ function updatePlayerList() {
     lastPlayerListJson = currentJson;
 
     playerListDiv.innerHTML = '';
-    players.forEach(p => {
+    entities.forEach(p => {
         const entry = document.createElement('div');
         entry.className = 'player-entry';
         if (p.id === myPlayerId) entry.classList.add('accent');
@@ -798,14 +928,13 @@ function updatePlayerList() {
             displayName = getFireWallEffect(p.name);
         } else if (p.name === 'NULL') {
             displayName = getMatrixEffect(p.name, 0.2);
+        } else if (p.name === 'WORMHOLE') {
+            displayName = `> ${p.name}`;
         }
 
         entry.innerHTML = `
-            <div style="display: flex; align-items: center;">
-                <span style="color: ${p.color}">${displayName}</span>
-                ${distLabel}
-            </div>
-            <span class="accent">${p.score || 0}</span>
+            <span style="color: ${p.color}">${displayName}</span>
+            ${distLabel}
         `;
         playerListDiv.appendChild(entry);
     });
@@ -886,7 +1015,13 @@ window.addEventListener('keydown', (e) => {
             e.preventDefault();
             chatInput.focus();
             break;
-            case 'c':
+        case 'escape':
+            if (isMinimapExpanded) {
+                isMinimapExpanded = false;
+                document.getElementById('minimap-panel').classList.remove('expanded');
+            }
+            break;
+        case 'c':
             performScan();
             // Si el scanner se acaba de activar, disparar un pulso extra de partículas
             if (isScannerActive && myPlayer) {
@@ -1124,10 +1259,14 @@ function render() {
         else if (obj.name === 'PROJECTILE' || obj.name === 'DATA_NODE') glow = 8;
 
         const size = obj.size || 1;
-        const sprite = getSprite(obj.symbol, obj.color, glow, size);
-        const padding = 15 * cameraZoom;
-        const sSize = size * CELL_SIZE * cameraZoom + padding * 2;
-        ctx.drawImage(sprite, x - sSize / 2, y - sSize / 2, sSize, sSize);
+        if (obj.name === 'WORMHOLE') {
+            drawWormhole(obj, ctx, offsetX, offsetY, now);
+        } else {
+            const sprite = getSprite(obj.symbol, obj.color, glow, size);
+            const padding = 15 * cameraZoom;
+            const sSize = size * CELL_SIZE * cameraZoom + padding * 2;
+            ctx.drawImage(sprite, x - sSize / 2, y - sSize / 2, sSize, sSize);
+        }
 
         // Thruster particles (1s and 0s)
         if (obj.hp !== undefined && obj.vx !== undefined && obj.vy !== undefined) {
@@ -1272,6 +1411,9 @@ function render() {
             } else if (obj.name === 'DATA_NODE') {
                 radius = 100;
                 intensity = 0.75;
+            } else if (obj.name === 'WORMHOLE') {
+                radius = 450;
+                intensity = 0.95;
             } else if (obj.name === 'METEORITE') { 
                 radius = 20; 
                 intensity = 0.05; 
@@ -1334,7 +1476,9 @@ function render() {
                 ctx.beginPath();
                 const outlineSize = ((obj.size || 1) + 0.5) * CELL_SIZE * cameraZoom;
                 ctx.arc(x, y, outlineSize / 2, 0, Math.PI * 2);
-                ctx.strokeStyle = scanData.isEnemy ? COLORS.danger : COLORS.accent;
+                let scanColor = scanData.isEnemy ? COLORS.danger : COLORS.accent;
+                if (scanData.isWormhole) scanColor = COLORS.success;
+                ctx.strokeStyle = scanColor;
                 ctx.lineWidth = 2;
                 const alpha = Math.min(0.5, scanElapsed / 500) * scannerAlpha;
                 ctx.globalAlpha = alpha;
@@ -1369,7 +1513,11 @@ function render() {
                 const textAlpha = Math.min(0.7, scanElapsed / 800) * scannerAlpha;
                 ctx.globalAlpha = textAlpha;
                 ctx.font = `bold ${10 * Math.max(0.8, cameraZoom)}px "Cascadia Code", "Courier New", Courier, monospace`;
-                ctx.fillStyle = scanData.isEnemy ? COLORS.danger : COLORS.accent;
+                
+                let textColor = scanData.isEnemy ? COLORS.danger : COLORS.accent;
+                if (scanData.isWormhole) textColor = COLORS.success;
+                ctx.fillStyle = textColor;
+                
                 ctx.textAlign = 'center';
                 const scanLabel = `${scanData.label} [${scanData.distance} AU]`;
                 
@@ -1428,6 +1576,12 @@ function render() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         damageFlash -= 0.02;
     }
+    if (teleportFlash > 0) {
+        const flicker = Math.random() > 0.5 ? 1.0 : 0.8;
+        ctx.fillStyle = `rgba(0, 255, 0, ${teleportFlash * 0.35 * flicker})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        teleportFlash -= 0.008; // Más lento que el daño (era 0.012)
+    }
     if (explosionFlash > 0) {
         const flicker = Math.random() > 0.3 ? 1.0 : 0.7;
         ctx.fillStyle = `rgba(255, 255, 255, ${explosionFlash * 0.15 * flicker})`;
@@ -1435,14 +1589,15 @@ function render() {
         explosionFlash -= 0.015;
     }
 
-    // 7.6 Efecto Glitch por daño crítico
-    if (damageFlash > 0.6) {
+    // 7.6 Efecto Glitch por daño crítico o teletransporte
+    if (damageFlash > 0.6 || teleportFlash > 0.6) {
         ctx.save();
-        const glitchAmount = Math.floor(damageFlash * 8);
+        const flashVal = Math.max(damageFlash, teleportFlash);
+        const glitchAmount = Math.floor(flashVal * 8);
         for (let i = 0; i < glitchAmount; i++) {
             const h = Math.random() * 30 + 5;
             const y = Math.random() * canvas.height;
-            const xOff = (Math.random() - 0.5) * 50 * damageFlash;
+            const xOff = (Math.random() - 0.5) * 50 * flashVal;
             ctx.globalAlpha = 0.5;
             ctx.drawImage(canvas, 0, y, canvas.width, h, xOff, y, canvas.width, h);
         }
@@ -1485,16 +1640,62 @@ function renderMinimap() {
             const radius = obj.name === 'FIRE_WALL' ? 6 : 4;
             minimapCtx.arc(mx, my, radius, 0, Math.PI * 2);
             minimapCtx.fill();
+
+            if (isMinimapExpanded) {
+                minimapCtx.fillStyle = COLORS.fg;
+                minimapCtx.font = 'bold 10px monospace';
+                minimapCtx.textAlign = 'center';
+                minimapCtx.fillText(obj.name, mx, my - radius - 4);
+            }
         } else if (obj.hp !== undefined && obj.id !== myPlayerId) {
             // Otros jugadores
             minimapCtx.fillStyle = obj.color;
             minimapCtx.fillRect(mx - 1.5, my - 1.5, 3, 3);
+
+            if (isMinimapExpanded) {
+                minimapCtx.fillStyle = obj.color;
+                minimapCtx.font = '9px monospace';
+                minimapCtx.textAlign = 'center';
+                minimapCtx.fillText(obj.name, mx, my - 6);
+            }
         } else if (obj.name === 'DATA_NODE') {
              // Nodos de datos (puntos pequeños)
              minimapCtx.fillStyle = COLORS.accent;
              minimapCtx.globalAlpha = 0.3;
              minimapCtx.fillRect(mx - 0.5, my - 0.5, 1, 1);
              minimapCtx.globalAlpha = 1.0;
+        } else if (isMinimapExpanded && (obj.name.includes('METEORITE') || obj.name.includes('ORE'))) {
+            // Meteoritos y recursos (solo en vista expandida)
+            minimapCtx.fillStyle = obj.color;
+            minimapCtx.globalAlpha = 0.3;
+            const mSize = obj.name === 'LARGE_METEORITE' ? 2 : 1.5;
+            minimapCtx.fillRect(mx - mSize/2, my - mSize/2, mSize, mSize);
+            minimapCtx.globalAlpha = 1.0;
+        } else if (obj.name === 'WORMHOLE') {
+            // Agujero de gusano
+            minimapCtx.fillStyle = '#00ff00';
+            minimapCtx.shadowBlur = 5;
+            minimapCtx.shadowColor = '#00ff00';
+            minimapCtx.beginPath();
+            minimapCtx.arc(mx, my, 3, 0, Math.PI * 2);
+            minimapCtx.fill();
+            minimapCtx.shadowBlur = 0;
+            
+            // Anillo exterior
+            minimapCtx.strokeStyle = '#00ff00';
+            minimapCtx.lineWidth = 1;
+            minimapCtx.globalAlpha = 0.5;
+            minimapCtx.beginPath();
+            minimapCtx.arc(mx, my, 5, 0, Math.PI * 2);
+            minimapCtx.stroke();
+            minimapCtx.globalAlpha = 1.0;
+
+            if (isMinimapExpanded) {
+                minimapCtx.fillStyle = '#00ff00';
+                minimapCtx.font = '9px monospace';
+                minimapCtx.textAlign = 'center';
+                minimapCtx.fillText('WORMHOLE', mx, my - 8);
+            }
         }
     });
 
@@ -1518,6 +1719,16 @@ function renderMinimap() {
     minimapCtx.lineTo(w, myY);
     minimapCtx.stroke();
 }
+
+minimapCanvas.addEventListener('click', () => {
+    isMinimapExpanded = !isMinimapExpanded;
+    const panel = document.getElementById('minimap-panel');
+    if (isMinimapExpanded) {
+        panel.classList.add('expanded');
+    } else {
+        panel.classList.remove('expanded');
+    }
+});
 
 connect();
 // Loop de renderizado suave

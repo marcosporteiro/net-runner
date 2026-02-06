@@ -17,16 +17,16 @@
         <canvas id="gameCanvas"></canvas>
         <div id="overlay">
             <div class="hud-top">
-                <div class="hud-panel">
-                    <div>SYSTEM: <span class="accent">NET-RUNNER v1.3.8</span></div>
-                    <div>STATUS: <span id="connection-status" class="status-tag disconnected">DISCONNECTED</span></div>
-                    <div style="margin-top: 8px;">THEME: <span id="theme-selector" class="accent clickable" title="Click to cycle themes">NET_RUNNER</span></div>
-                </div>
-                <div class="hud-panel stats-panel" style="text-align: right;">
-                    <div class="user-info">
-                        <span id="player-color-indicator" class="clickable" title="Click to change color">◈</span>
-                        <span id="player-name" class="accent clickable" title="Click to change name">ANONYMOUS</span>
+                <div class="hud-panel" style="padding: 10px 15px;">
+                    <div class="panel-header">SYSTEM_UPLINK</div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div>IDENTITY: <span id="player-name" class="accent clickable" title="Click to change name">ANONYMOUS</span> <span id="player-color-indicator" class="clickable" title="Click to change color">◈</span></div>
+                        <div>STATUS: <span id="connection-status" class="status-tag disconnected">DISCONNECTED</span></div>
+                        <div>THEME: <span id="theme-selector" class="accent clickable" title="Click to cycle themes">NET_RUNNER</span></div>
                     </div>
+                </div>
+                <div class="hud-panel stats-panel">
+                    <div class="panel-header" style="text-align: right;">AGENT_METRICS</div>
                     
                     <div class="vital-stats">
                         <div class="stat-group">
@@ -60,7 +60,7 @@
                         </div>
                     </div>
 
-                    <div class="combat-stats">
+                    <div class="combat-stats" style="display: flex; justify-content: flex-end; gap: 8px;">
                         <span class="panel-label">WPN</span>
                         <span id="player-weapon" class="accent">BASIC</span>
                     </div>
@@ -80,14 +80,14 @@
                         </div>
                     </div>
 
-                    <div class="system-stats">
+                    <div class="system-stats" style="margin-top: 4px; padding-top: 4px; border-top: 1px dotted rgba(48, 54, 61, 0.5);">
                         <div class="stat-item">
                             <span class="panel-label">LAT</span>
                             <span id="latency" class="accent">--ms</span>
                         </div>
                         <div class="stat-item">
                             <span id="fps" class="success">--</span>
-                            <span class="panel-label">FPS</span>
+                            <span class="panel-label" style="min-width: unset;">FPS</span>
                         </div>
                     </div>
                 </div>
@@ -101,20 +101,23 @@
                         <!-- Debug info will be injected here -->
                     </div>
                 </div>
-                <div id="logs" class="hud-panel" style="width: 380px; margin-bottom: 10px;">
-                    <div class="log-entry">> Initializing secure connection...</div>
-                    <div class="log-entry">> Waiting for uplink...</div>
-                </div>
-                <div id="chat-container" class="hud-panel" style="width: 380px; display: flex; align-items: center; padding: 8px 15px;">
-                    <span class="accent" style="margin-right: 10px;">></span>
-                    <input type="text" id="chat-input" placeholder="Type command or message..." autocomplete="off" 
-                           style="background: transparent; border: none; color: #c9d1d9; outline: none; flex-grow: 1; font-family: inherit; font-size: 12px;">
+                <div class="hud-panel" style="width: 380px;">
+                    <div class="panel-header">CONSOLE_LOGS</div>
+                    <div id="logs">
+                        <div class="log-entry">> Initializing secure connection...</div>
+                        <div class="log-entry">> Waiting for uplink...</div>
+                    </div>
+                    <div style="display: flex; align-items: center; width: 100%; border-top: 1px dotted var(--border); padding-top: 10px; margin-top: 5px;">
+                        <span class="accent" style="margin-right: 10px;">></span>
+                        <input type="text" id="chat-input" placeholder="Type command or message..." autocomplete="off" 
+                               style="background: transparent; border: none; color: #c9d1d9; outline: none; flex-grow: 1; font-family: inherit; font-size: 12px;">
+                    </div>
                 </div>
             </div>
 
             <div id="minimap-container" style="position: absolute; bottom: 80px; right: 40px; pointer-events: auto;">
                 <div id="minimap-panel" class="hud-panel" style="width: 250px; padding: 10px; display: flex; flex-direction: column;">
-                    <div class="panel-header">RADAR_LINK / ACTIVE_SYSTEMS</div>
+                    <div class="panel-header">RADAR_SYSTEM</div>
                     <canvas id="minimapCanvas" style="height: 180px;"></canvas>
                     <div id="player-list">
                         <!-- Players will be listed here -->
@@ -123,8 +126,11 @@
             </div>
 
             <div id="tutorial-panel" class="hud-bottom">
-                <div class="hud-panel">
-                    <span class="accent">WASD</span> to navigate | <span class="accent">SPACE/CLICK</span> to shoot | <span class="accent">C</span> to scan | <span class="accent">F11</span> full extraction
+                <div class="hud-panel" style="min-width: 500px;">
+                    <div class="panel-header" style="text-align: center;">OPERATIONAL_GUIDE</div>
+                    <div style="text-align: center;">
+                        <span class="accent">WASD</span> to navigate | <span class="accent">SPACE/CLICK</span> to shoot | <span class="accent">C</span> to scan | <span class="accent">F11</span> full extraction
+                    </div>
                 </div>
             </div>
         </div>

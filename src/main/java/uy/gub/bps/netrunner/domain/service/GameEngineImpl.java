@@ -17,6 +17,9 @@ public class GameEngineImpl implements GameEngine {
     private final Map<UUID, GameObject> worldObjects = new ConcurrentHashMap<>();
     private final Map<UUID, Projectile> projectiles = new ConcurrentHashMap<>();
     private final Map<UUID, Sentinel> sentinels = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> lastTeleportTime = new ConcurrentHashMap<>();
+    private final Map<UUID, UUID> playerInWormhole = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> wormholeStartTime = new ConcurrentHashMap<>();
     private final Map<UUID, java.util.Set<String>> activeInputs = new ConcurrentHashMap<>();
     private final java.util.Queue<String> pendingEvents = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private final Map<UUID, java.util.Queue<String>> privateEvents = new ConcurrentHashMap<>();
@@ -82,7 +85,31 @@ public class GameEngineImpl implements GameEngine {
             spawnStandaloneMeteorite(3);
         }
 
+        // Añadir Agujeros de Gusano (Máximo 3 pares)
+        for (int i = 0; i < 3; i++) {
+            spawnWormholePair();
+        }
+
         // Los centinelas se gestionarán dinámicamente en el update()
+    }
+
+    private void spawnWormholePair() {
+        Position pos1 = getRandomEmptyPosition(5);
+        Position pos2 = getRandomEmptyPosition(5);
+        
+        Wormhole w1 = Wormhole.builder()
+                .position(pos1)
+                .size(5)
+                .build();
+        Wormhole w2 = Wormhole.builder()
+                .position(pos2)
+                .linkedId(w1.getId())
+                .size(5)
+                .build();
+        w1.setLinkedId(w2.getId());
+        
+        worldObjects.put(w1.getId(), w1);
+        worldObjects.put(w2.getId(), w2);
     }
 
     private void spawnSentinel() {
@@ -1131,7 +1158,8 @@ public class GameEngineImpl implements GameEngine {
     }
 
     private void checkCollisions(Player player, Position pos) {
-        queryGrid(pos.x(), pos.y(), 2.0, obj -> {
+        final UUID[] touchedWhId = {null};
+        queryGrid(pos.x(), pos.y(), 5.0, obj -> {
             // Colisión con Sentinelas (Daño por contacto)
             if (obj instanceof Sentinel sent) {
                 double threshold = (player.getSize() + sent.getSize()) / 2.0;
@@ -1174,8 +1202,92 @@ public class GameEngineImpl implements GameEngine {
                     player.setScore(player.getScore() + ore.getType().value);
                     pendingEffects.add(new VisualEffect("COLLECT", obj.getPosition().x(), obj.getPosition().y(), obj.getColor()));
                 }
+            } else if (obj instanceof Wormhole wh) {
+                double threshold = (player.getSize() + wh.getSize()) / 2.0;
+                if (Math.abs(obj.getPosition().x() - pos.x()) < threshold && Math.abs(obj.getPosition().y() - pos.y()) < threshold) {
+                    touchedWhId[0] = wh.getId();
+                }
             }
         });
+
+        handleWormholeInteraction(player, touchedWhId[0]);
+    }
+
+    private void handleWormholeInteraction(Player player, UUID whId) {
+        UUID playerId = player.getId();
+        if (whId != null) {
+            long now = System.currentTimeMillis();
+            long lastTele = lastTeleportTime.getOrDefault(playerId, 0L);
+            
+            if (now - lastTele > 10000) { // Cooldown 10s
+                UUID activeWhId = playerInWormhole.get(playerId);
+                
+                if (!whId.equals(activeWhId)) {
+                    // Nuevo contacto o cambio de portal
+                    playerInWormhole.put(playerId, whId);
+                    wormholeStartTime.put(playerId, now);
+                    addPrivateEvent(playerId, "[#00ff00]SYSTEM: Wormhole detected. Stabilizing connection (3s)...");
+                } else {
+                    // Contacto continuo
+                    long startTime = wormholeStartTime.getOrDefault(playerId, now);
+                    long elapsed = now - startTime;
+                    
+                    if (elapsed >= 3000) {
+                        performTeleport(player, whId);
+                    } else if (tickCount % 20 == 0) { // Feedback aprox cada segundo
+                        int remaining = 3 - (int)(elapsed / 1000);
+                        addPrivateEvent(playerId, "[#00ff00]SYSTEM: Link stabilization in progress... " + remaining + "s");
+                    }
+                }
+            }
+        } else {
+            // No hay contacto con ningún wormhole, resetear
+            playerInWormhole.remove(playerId);
+            wormholeStartTime.remove(playerId);
+        }
+    }
+
+    private void performTeleport(Player player, UUID whId) {
+        Wormhole wh = (Wormhole) worldObjects.get(whId);
+        if (wh == null) return;
+        
+        Wormhole targetWh = (Wormhole) worldObjects.get(wh.getLinkedId());
+        if (targetWh == null) return;
+
+        Position targetPos = targetWh.getPosition();
+        Position exitPos = targetPos;
+        
+        // Encontrar una posición a ~5 celdas de distancia del destino para no quedar atrapado
+        for (int i = 0; i < 30; i++) {
+            double angle = random.nextDouble() * 2 * Math.PI;
+            double dist = 5.0 + random.nextDouble() * 2.0; // Entre 5 y 7 celdas
+            double nx = targetPos.x() + Math.cos(angle) * dist;
+            double ny = targetPos.y() + Math.sin(angle) * dist;
+            Position testPos = new Position(nx, ny);
+            
+            if (isValidPosition(testPos, player.getSize()) && !isOccupiedBySolid(testPos, player.getSize())) {
+                exitPos = testPos;
+                break;
+            }
+        }
+        
+        player.setPosition(exitPos);
+        lastTeleportTime.put(player.getId(), System.currentTimeMillis());
+        playerInWormhole.remove(player.getId());
+        wormholeStartTime.remove(player.getId());
+        
+        pendingEffects.add(new VisualEffect("TELEPORT", wh.getPosition().x(), wh.getPosition().y(), "#00ff00"));
+        pendingEffects.add(new VisualEffect("TELEPORT", targetWh.getPosition().x(), targetWh.getPosition().y(), "#00ff00"));
+        addPrivateEvent(player.getId(), "[#00ff00]SYSTEM: Quantum jump successful. Position recalibrated.");
+        
+        // 25% chance of destruction and respawn elsewhere
+        if (random.nextDouble() < 0.25) {
+            worldObjects.remove(wh.getId());
+            worldObjects.remove(targetWh.getId());
+            staticObjectsChanged = true;
+            pendingEvents.add("[#3fb950]Wormhole collapsed due to instability. Re-spawning...");
+            spawnWormholePair();
+        }
     }
 
     private void manageSentinels() {
@@ -1282,12 +1394,17 @@ public class GameEngineImpl implements GameEngine {
         // 1. Cercanía inmediata (vista detallada de todo tipo de objetos)
         resultSet.addAll(getNearbyObjects(player.getPosition().x(), player.getPosition().y(), viewRange));
         
-        // 2. Unidades enemigas y aliados (Radar Global)
+        // 2. Unidades enemigas y aliados (Radar Global) y Agujeros de Gusano
         // Se envían todos los jugadores y centinelas para que sean siempre visibles en el minimapa
         players.values().stream()
                 .filter(p -> p.getRespawnTimer() == 0)
                 .forEach(resultSet::add);
         resultSet.addAll(sentinels.values());
+        
+        // Incluir todos los agujeros de gusano en el radar
+        worldObjects.values().stream()
+                .filter(o -> o instanceof Wormhole)
+                .forEach(resultSet::add);
 
         // 3. Nodos de Datos (Radar Extendido)
         // Permitimos ver puntos de interés a mayor distancia para facilitar la navegación
