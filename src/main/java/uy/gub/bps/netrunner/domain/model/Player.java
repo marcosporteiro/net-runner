@@ -40,6 +40,8 @@ public class Player implements GameObject {
     private int gold;
     @JsonProperty("sa")
     private boolean scannerActive;
+    @JsonProperty("dbg")
+    private boolean debugMode;
     @JsonProperty("l")
     private int level;
     @JsonProperty("e")

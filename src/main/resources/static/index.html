@@ -67,6 +67,10 @@
 
                     <div class="engine-stats">
                         <div class="stat-item">
+                            <span class="panel-label">POS</span>
+                            <span id="player-pos" class="accent">0.0, 0.0</span>
+                        </div>
+                        <div class="stat-item">
                             <span class="panel-label">SPD</span>
                             <span id="player-speed">0.00</span>
                         </div>
@@ -91,6 +95,12 @@
             
 
             <div id="logs-container" style="position: absolute; bottom: 80px; left: 40px; pointer-events: auto;">
+                <div id="debug-panel" class="hud-panel" style="width: 380px; margin-bottom: 10px; display: none; font-family: 'Cascadia Code', monospace; font-size: 11px;">
+                    <div class="panel-header" style="color: var(--success);">[DEBUG_SYSTEM_ACTIVE]</div>
+                    <div id="debug-content">
+                        <!-- Debug info will be injected here -->
+                    </div>
+                </div>
                 <div id="logs" class="hud-panel" style="width: 380px; margin-bottom: 10px;">
                     <div class="log-entry">> Initializing secure connection...</div>
                     <div class="log-entry">> Waiting for uplink...</div>

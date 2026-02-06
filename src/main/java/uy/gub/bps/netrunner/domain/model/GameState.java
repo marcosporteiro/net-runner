@@ -18,4 +18,6 @@ public class GameState {
     private List<String> events;
     @JsonProperty("ef")
     private List<VisualEffect> effects;
+    @JsonProperty("dbg")
+    private java.util.Map<String, Object> debugData;
 }

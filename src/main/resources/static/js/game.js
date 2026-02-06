@@ -13,6 +13,9 @@ const playerGoldSpan = document.getElementById('player-gold');
 const playerWeaponSpan = document.getElementById('player-weapon');
 const playerSpeedSpan = document.getElementById('player-speed');
 const playerAccelSpan = document.getElementById('player-accel');
+const playerPosSpan = document.getElementById('player-pos');
+const debugPanel = document.getElementById('debug-panel');
+const debugContent = document.getElementById('debug-content');
 const latencySpan = document.getElementById('latency');
 const fpsSpan = document.getElementById('fps');
 const logsDiv = document.getElementById('logs');
@@ -303,8 +306,11 @@ function updateScannedEntities() {
             const dy = obj.position.y - myPlayer.position.y;
             const distCells = Math.sqrt(dx * dx + dy * dy);
             
+            const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
             let label = obj.name === 'METEORITE' ? 'Meteorite' : 
-                        obj.name.includes('ORE') ? `Mineral (${obj.name.replace('_ORE', '')})` :
+                        obj.name === 'LARGE_METEORITE' ? 'Heavy Meteorite' :
+                        obj.name.includes('METEORITE') ? `Meteorite (${capitalize(obj.name.split('_')[0])})` :
+                        obj.name.includes('ORE') ? `Mineral (${capitalize(obj.name.split('_')[0])})` :
                         obj.name === 'NULL' ? 'Unknown Entity' :
                         obj.name === 'PROJECTILE' ? 'Incoming Threat' :
                         obj.hp !== undefined ? `Vessel: ${obj.name}` : obj.name;
@@ -514,7 +520,7 @@ function normalize(data) {
         'i': 'id', 'p': 'position', 's': 'symbol', 'c': 'color', 'n': 'name',
         'h': 'hp', 'sh': 'shield', 'co': 'copper', 'si': 'silver', 'go': 'gold',
         'l': 'level', 'e': 'exp', 'w': 'weapon', 't': 'type', 'sz': 'size',
-        'pi': 'playerId', 'pn': 'playerName', 'd': 'payload'
+        'pi': 'playerId', 'pn': 'playerName', 'd': 'payload', 'dbg': 'debugData'
     };
 
     for (const key in mapping) {
@@ -627,6 +633,28 @@ function connect() {
             });
         }
 
+        // Actualizar panel de debug HTML
+        if (debugPanel) {
+            if (gameState.debugData) {
+                debugPanel.style.display = 'block';
+                const dbg = gameState.debugData;
+                debugContent.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                        <div>SERVER_TICK: <span class="accent">${dbg.tick}</span></div>
+                        <div>VISIBLE_OBJS: <span class="accent">${dbg.objs}</span></div>
+                        <div>TOTAL_PLAYERS: <span class="accent">${dbg.players}</span></div>
+                        <div>TOTAL_SENTINELS: <span class="accent">${dbg.sent}</span></div>
+                        <div>TOTAL_PROJECTILES: <span class="accent">${dbg.proj}</span></div>
+                        <div>WORLD_OBJECTS: <span class="accent">${dbg.world_objs}</span></div>
+                        <div>QT_STATIC_NODES: <span class="accent">${dbg.sq ? dbg.sq.length : 0}</span></div>
+                        <div>QT_DYNAMIC_NODES: <span class="accent">${dbg.dq ? dbg.dq.length : 0}</span></div>
+                    </div>
+                `;
+            } else {
+                debugPanel.style.display = 'none';
+            }
+        }
+
         // Buscar mi jugador para la cámara
         if (myPlayerId) {
             const prevHp = myPlayer ? myPlayer.hp : null;
@@ -667,6 +695,10 @@ function connect() {
                 
                 if (myPlayer.weapon) {
                     playerWeaponSpan.textContent = myPlayer.weapon.name;
+                }
+                
+                if (playerPosSpan) {
+                    playerPosSpan.textContent = `${myPlayer.position.x.toFixed(1)}, ${myPlayer.position.y.toFixed(1)}`;
                 }
 
                 // Actualizar Velocidad y Aceleración
@@ -997,6 +1029,35 @@ function render() {
     ctx.strokeRect(offsetX, offsetY, WORLD_WIDTH * scaledCellSize, WORLD_HEIGHT * scaledCellSize);
     ctx.setLineDash([]);
 
+    // 2.2 Dibujar regiones QuadTree (Debug)
+    if (gameState.debugData) {
+        ctx.lineWidth = 1;
+        
+        // Regiones estáticas (verde tenue)
+        if (gameState.debugData.sq) {
+            ctx.strokeStyle = 'rgba(63, 185, 80, 0.4)';
+            gameState.debugData.sq.forEach(r => {
+                const rx = (r.x - r.w) * scaledCellSize + offsetX;
+                const ry = (r.y - r.h) * scaledCellSize + offsetY;
+                const rw = (r.w * 2) * scaledCellSize;
+                const rh = (r.h * 2) * scaledCellSize;
+                ctx.strokeRect(rx, ry, rw, rh);
+            });
+        }
+        
+        // Regiones dinámicas (azul tenue)
+        if (gameState.debugData.dq) {
+            ctx.strokeStyle = 'rgba(88, 166, 255, 0.4)';
+            gameState.debugData.dq.forEach(r => {
+                const rx = (r.x - r.w) * scaledCellSize + offsetX;
+                const ry = (r.y - r.h) * scaledCellSize + offsetY;
+                const rw = (r.w * 2) * scaledCellSize;
+                const rh = (r.h * 2) * scaledCellSize;
+                ctx.strokeRect(rx, ry, rw, rh);
+            });
+        }
+    }
+
     // 2.1 Estrellas con parpadeo (Twinkle effect)
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1259,6 +1320,7 @@ function render() {
                 scannerAlpha = idleFlicker - subtleNoise;
             }
 
+            const labelBoxes = [];
             scannedEntities.forEach(scanData => {
                 const obj = gameState.objects.find(o => o.id === scanData.id);
                 if (!obj || obj.hp === 0) return;
@@ -1310,8 +1372,30 @@ function render() {
                 ctx.fillStyle = scanData.isEnemy ? COLORS.danger : COLORS.accent;
                 ctx.textAlign = 'center';
                 const scanLabel = `${scanData.label} [${scanData.distance} AU]`;
-                const offset = ((obj.size || 1) / 2 * CELL_SIZE * cameraZoom) + 15 * cameraZoom;
-                ctx.fillText(scanLabel, x, y - offset);
+                
+                const baseOffset = ((obj.size || 1) / 2 * CELL_SIZE * cameraZoom) + 15 * cameraZoom;
+                let currentY = y - baseOffset;
+                const labelWidth = ctx.measureText(scanLabel).width;
+                const labelHeight = 12 * cameraZoom;
+
+                // Prevención de solapamiento
+                let overlapped = true;
+                let attempts = 0;
+                while (overlapped && attempts < 10) {
+                    overlapped = false;
+                    for (const box of labelBoxes) {
+                        if (Math.abs(x - box.x) < (labelWidth + box.w) * 0.55 && 
+                            Math.abs(currentY - box.y) < labelHeight) {
+                            currentY -= labelHeight + 2;
+                            overlapped = true;
+                            break;
+                        }
+                    }
+                    attempts++;
+                }
+                labelBoxes.push({ x: x, y: currentY, w: labelWidth, h: labelHeight });
+
+                ctx.fillText(scanLabel, x, currentY);
                 ctx.restore();
             });
         }

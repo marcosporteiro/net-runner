@@ -23,11 +23,10 @@ public class GameEngineImpl implements GameEngine {
     private final java.util.Queue<VisualEffect> pendingEffects = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private final Random random = new Random();
 
+    private QuadTree dynamicQuadTree;
+    private QuadTree staticQuadTree;
     private static final int WIDTH = 500;
     private static final int HEIGHT = 500;
-    private static final int GRID_SIZE = 25;
-    private final List<GameObject>[][] spatialGrid = new List[GRID_SIZE][GRID_SIZE];
-    private final List<GameObject>[][] staticGrid = new List[GRID_SIZE][GRID_SIZE];
     private static final double ACCEL = 0.012;
     private static final double FRICTION = 1.0;
     private static final double MAX_SPEED = 0.08;
@@ -52,12 +51,8 @@ public class GameEngineImpl implements GameEngine {
     };
 
     public GameEngineImpl() {
-        for (int i = 0; i < GRID_SIZE; i++) {
-            for (int j = 0; j < GRID_SIZE; j++) {
-                spatialGrid[i][j] = new ArrayList<>();
-                staticGrid[i][j] = new ArrayList<>();
-            }
-        }
+        dynamicQuadTree = new QuadTree(new QuadTree.Rectangle(WIDTH/2.0, HEIGHT/2.0, WIDTH/2.0, HEIGHT/2.0), 10);
+        staticQuadTree = new QuadTree(new QuadTree.Rectangle(WIDTH/2.0, HEIGHT/2.0, WIDTH/2.0, HEIGHT/2.0), 20);
         initWorld();
         updateStaticGrid();
         staticObjectsChanged = false;
@@ -148,14 +143,14 @@ public class GameEngineImpl implements GameEngine {
                     Position pos = new Position(px + 0.5, py + 0.5);
                     if (!isOccupied(pos, 1)) {
                         boolean isInterior = dist < radius - 0.8;
-                        boolean hasResources = isInterior && random.nextInt(10) < 6; // 60% chance in interior
+                        boolean hasResources = isInterior && random.nextInt(10) < 4; // 40% chance in interior (antes 60%)
                         
                         Ore.OreType type = selectOreType();
                         Meteorite met = Meteorite.builder()
                                 .position(pos)
                                 .symbol("#")
                                 .color(hasResources ? type.color : "#484f58")
-                                .name(hasResources ? "ORE_METEORITE" : "METEORITE")
+                                .name(hasResources ? type.name() + "_METEORITE" : "METEORITE")
                                 .hasResources(hasResources)
                                 .resourceType(hasResources ? type : null)
                                 .health(hasResources ? 3.0 : 1.0)
@@ -186,12 +181,12 @@ public class GameEngineImpl implements GameEngine {
                 Position pos = new Position(px + 0.5, py + 0.5);
                 if (!isOccupied(pos, 1)) {
                     Ore.OreType type = selectOreType();
-                    boolean hasResources = random.nextInt(10) < 3; // 30% chance (antes 20%)
+                    boolean hasResources = random.nextInt(100) < 15; // 15% chance (antes 30%)
                     Meteorite met = Meteorite.builder()
                             .position(pos)
                             .symbol("#")
                             .color(hasResources ? type.color : "#484f58")
-                            .name(hasResources ? "ORE_METEORITE" : "METEORITE")
+                            .name(hasResources ? type.name() + "_METEORITE" : "METEORITE")
                             .hasResources(hasResources)
                             .resourceType(hasResources ? type : null)
                             .health(hasResources ? 3.0 : 1.0)
@@ -370,6 +365,11 @@ public class GameEngineImpl implements GameEngine {
                 addPrivateEvent(sender.getId(), "[#d29922]!ore -> List available ore types.");
                 addPrivateEvent(sender.getId(), "[#d29922]!give [target] <weapon|ore|shield> <value> -> Grant equipment or resources.");
                 addPrivateEvent(sender.getId(), "[#d29922]   Ex: !give shield 10 | !give John ore gold 500");
+                addPrivateEvent(sender.getId(), "[#d29922]!debug -> Toggle debug visualization.");
+            }
+            case "!debug" -> {
+                sender.setDebugMode(!sender.isDebugMode());
+                addPrivateEvent(sender.getId(), "[#3fb950]DEBUG_MODE: " + (sender.isDebugMode() ? "ENABLED" : "DISABLED"));
             }
             case "!whisp" -> {
                 if (parts.length < 3) {
@@ -761,64 +761,31 @@ public class GameEngineImpl implements GameEngine {
     }
 
     private synchronized void updateStaticGrid() {
-        for (int i = 0; i < GRID_SIZE; i++) {
-            for (int j = 0; j < GRID_SIZE; j++) {
-                staticGrid[i][j].clear();
-            }
-        }
-        worldObjects.values().forEach(obj -> addToGrid(obj, staticGrid));
+        staticQuadTree.clear();
+        worldObjects.values().forEach(staticQuadTree::insert);
     }
 
     private synchronized void updateSpatialGrid() {
-        for (int i = 0; i < GRID_SIZE; i++) {
-            for (int j = 0; j < GRID_SIZE; j++) {
-                spatialGrid[i][j].clear();
-            }
-        }
-        // Solo entidades dinámicas
-        sentinels.values().forEach(s -> addToGrid(s, spatialGrid));
-        projectiles.values().forEach(p -> addToGrid(p, spatialGrid));
+        dynamicQuadTree.clear();
+        sentinels.values().forEach(dynamicQuadTree::insert);
+        projectiles.values().forEach(dynamicQuadTree::insert);
         players.values().stream()
                 .filter(p -> p.getRespawnTimer() == 0)
-                .forEach(p -> addToGrid(p, spatialGrid));
-    }
-
-    private synchronized void addToGrid(GameObject obj, List<GameObject>[][] grid) {
-        int gx = Math.min(GRID_SIZE - 1, Math.max(0, (int) (obj.getPosition().x() / (WIDTH / GRID_SIZE))));
-        int gy = Math.min(GRID_SIZE - 1, Math.max(0, (int) (obj.getPosition().y() / (HEIGHT / GRID_SIZE))));
-        grid[gx][gy].add(obj);
+                .forEach(dynamicQuadTree::insert);
     }
 
     private synchronized List<GameObject> getNearbyObjects(double x, double y, double radius) {
         List<GameObject> nearby = new ArrayList<>();
-        int gx = Math.min(GRID_SIZE - 1, Math.max(0, (int) (x / (double)(WIDTH / GRID_SIZE))));
-        int gy = Math.min(GRID_SIZE - 1, Math.max(0, (int) (y / (double)(HEIGHT / GRID_SIZE))));
-        int cellRadius = (int) Math.ceil(radius / (double)(WIDTH / GRID_SIZE)) + 1;
-
-        for (int i = gx - cellRadius; i <= gx + cellRadius; i++) {
-            for (int j = gy - cellRadius; j <= gy + cellRadius; j++) {
-                if (i >= 0 && i < GRID_SIZE && j >= 0 && j < GRID_SIZE) {
-                    nearby.addAll(spatialGrid[i][j]);
-                    nearby.addAll(staticGrid[i][j]);
-                }
-            }
-        }
+        QuadTree.Rectangle range = new QuadTree.Rectangle(x, y, radius, radius);
+        dynamicQuadTree.query(range, nearby);
+        staticQuadTree.query(range, nearby);
         return nearby;
     }
 
     private synchronized List<GameObject> getNearbyDynamicObjects(double x, double y, double radius) {
         List<GameObject> nearby = new ArrayList<>();
-        int gx = Math.min(GRID_SIZE - 1, Math.max(0, (int) (x / (double)(WIDTH / GRID_SIZE))));
-        int gy = Math.min(GRID_SIZE - 1, Math.max(0, (int) (y / (double)(HEIGHT / GRID_SIZE))));
-        int cellRadius = (int) Math.ceil(radius / (double)(WIDTH / GRID_SIZE)) + 1;
-
-        for (int i = gx - cellRadius; i <= gx + cellRadius; i++) {
-            for (int j = gy - cellRadius; j <= gy + cellRadius; j++) {
-                if (i >= 0 && i < GRID_SIZE && j >= 0 && j < GRID_SIZE) {
-                    nearby.addAll(spatialGrid[i][j]);
-                }
-            }
-        }
+        QuadTree.Rectangle range = new QuadTree.Rectangle(x, y, radius, radius);
+        dynamicQuadTree.query(range, nearby);
         return nearby;
     }
 
@@ -876,8 +843,20 @@ public class GameEngineImpl implements GameEngine {
             }
         });
 
-        // IA de Sentinelas
+        // IA de Sentinelas (Optimización: solo actualizar si hay jugadores cerca o es un jefe)
+        List<Player> activePlayers = players.values().stream()
+                .filter(p -> p.getRespawnTimer() == 0)
+                .toList();
+
         sentinels.values().forEach(sent -> {
+            boolean isBoss = "NULL".equals(sent.getName()) || "FIRE_WALL".equals(sent.getName());
+            boolean hasPlayerNearby = isBoss || activePlayers.stream().anyMatch(p -> 
+                Math.abs(p.getPosition().x() - sent.getPosition().x()) < 100 &&
+                Math.abs(p.getPosition().y() - sent.getPosition().y()) < 100
+            );
+
+            if (!hasPlayerNearby) return;
+
             // Movimiento aleatorio suave
             if (random.nextInt(60) == 0) {
                 double speed = "FIRE_WALL".equals(sent.getName()) ? 0.01 : 0.05;
@@ -1177,27 +1156,15 @@ public class GameEngineImpl implements GameEngine {
 
     private boolean isOccupiedBySolid(Position pos, int size) {
         double halfSize = size / 2.0;
-        double x1 = pos.x() - halfSize;
-        double x2 = pos.x() + halfSize;
-        double y1 = pos.y() - halfSize;
-        double y2 = pos.y() + halfSize;
-
-        int gx = (int) (pos.x() / (double)(WIDTH / GRID_SIZE));
-        int gy = (int) (pos.y() / (double)(HEIGHT / GRID_SIZE));
-        int gridRadius = (int) Math.ceil(halfSize / (double)(WIDTH / GRID_SIZE)) + 1;
-
-        for (int i = gx - gridRadius; i <= gx + gridRadius; i++) {
-            for (int j = gy - gridRadius; j <= gy + gridRadius; j++) {
-                if (i >= 0 && i < GRID_SIZE && j >= 0 && j < GRID_SIZE) {
-                    for (GameObject o : staticGrid[i][j]) {
-                        if (o instanceof Meteorite) {
-                            double oh = o.getSize() / 2.0;
-                            if (x1 < o.getPosition().x() + oh && x2 > o.getPosition().x() - oh &&
-                                y1 < o.getPosition().y() + oh && y2 > o.getPosition().y() - oh) {
-                                return true;
-                            }
-                        }
-                    }
+        QuadTree.Rectangle range = new QuadTree.Rectangle(pos.x(), pos.y(), halfSize + 1.0, halfSize + 1.0);
+        List<GameObject> nearby = new ArrayList<>();
+        staticQuadTree.query(range, nearby);
+        for (GameObject o : nearby) {
+            if (o instanceof Meteorite) {
+                double oh = o.getSize() / 2.0;
+                if (pos.x() - halfSize < o.getPosition().x() + oh && pos.x() + halfSize > o.getPosition().x() - oh &&
+                    pos.y() - halfSize < o.getPosition().y() + oh && pos.y() + halfSize > o.getPosition().y() - oh) {
+                    return true;
                 }
             }
         }
@@ -1253,7 +1220,7 @@ public class GameEngineImpl implements GameEngine {
         allObjects.addAll(players.values());
         allObjects.addAll(sentinels.values());
         allObjects.addAll(projectiles.values());
-        return new GameState(allObjects, new ArrayList<>(), new ArrayList<>());
+        return new GameState(allObjects, new ArrayList<>(), new ArrayList<>(), null);
     }
 
     @Override
@@ -1261,24 +1228,59 @@ public class GameEngineImpl implements GameEngine {
         Player player = players.get(playerId);
         if (player == null) return getCurrentState();
 
-        // Rango de visión aproximado para filtrar lo que se envía al cliente (aumentado para el escáner)
+        // Rango de visión para objetos detallados (Meteoritos, Ores, Proyectiles, etc.)
         double viewRange = 40.0;
-        List<GameObject> visibleObjects = getNearbyObjects(player.getPosition().x(), player.getPosition().y(), viewRange);
-        
-        // Asegurarse de incluir a todos los jugadores para el panel de ACTIVE_NODES
-        // y al jugador propio aunque por algún motivo no esté en la grilla (ej. recién aparecido)
-        List<GameObject> result = new ArrayList<>(visibleObjects);
-        if (!result.contains(player)) result.add(player);
-        
-        players.values().forEach(p -> {
-            if (!result.contains(p)) result.add(p);
-        });
-        
-        // Incluir TODOS los centinelas (IA) para que aparezcan en el mapa/ACTIVE_NODES
-        sentinels.values().forEach(s -> {
-            if (!result.contains(s)) result.add(s);
-        });
+        // Rango extendido para Nodos de Datos en el Radar (Puntos de interés)
+        // Reducido de 250 a 100 para optimizar el rendimiento (CPU y ancho de banda)
+        double nodeRadarRange = 100.0;
 
-        return new GameState(result, new ArrayList<>(), new ArrayList<>());
+        // Usamos un Set para evitar duplicados eficientemente y mantener el orden
+        java.util.Set<GameObject> resultSet = new java.util.LinkedHashSet<>();
+        
+        // 1. Cercanía inmediata (vista detallada de todo tipo de objetos)
+        resultSet.addAll(getNearbyObjects(player.getPosition().x(), player.getPosition().y(), viewRange));
+        
+        // 2. Unidades enemigas y aliados (Radar Global)
+        // Se envían todos los jugadores y centinelas para que sean siempre visibles en el minimapa
+        players.values().stream()
+                .filter(p -> p.getRespawnTimer() == 0)
+                .forEach(resultSet::add);
+        resultSet.addAll(sentinels.values());
+
+        // 3. Nodos de Datos (Radar Extendido)
+        // Permitimos ver puntos de interés a mayor distancia para facilitar la navegación
+        List<GameObject> nodesNearby = new ArrayList<>();
+        staticQuadTree.query(new QuadTree.Rectangle(player.getPosition().x(), player.getPosition().y(), nodeRadarRange, nodeRadarRange), nodesNearby);
+        for (GameObject o : nodesNearby) {
+            if (o instanceof DataNode) {
+                resultSet.add(o);
+            }
+        }
+
+        // Siempre incluir al propio jugador
+        resultSet.add(player);
+        
+        List<GameObject> result = new ArrayList<>(resultSet);
+        
+        java.util.Map<String, Object> debugData = null;
+        if (player.isDebugMode()) {
+            debugData = new java.util.HashMap<>();
+            List<QuadTree.Rectangle> dynamicBoundaries = new ArrayList<>();
+            dynamicQuadTree.getAllBoundaries(dynamicBoundaries);
+            debugData.put("dq", dynamicBoundaries);
+            
+            List<QuadTree.Rectangle> staticBoundaries = new ArrayList<>();
+            staticQuadTree.getAllBoundaries(staticBoundaries);
+            debugData.put("sq", staticBoundaries);
+
+            debugData.put("tick", tickCount);
+            debugData.put("objs", result.size());
+            debugData.put("sent", sentinels.size());
+            debugData.put("proj", projectiles.size());
+            debugData.put("players", players.size());
+            debugData.put("world_objs", worldObjects.size());
+        }
+        
+        return new GameState(result, new ArrayList<>(), new ArrayList<>(), debugData);
     }
 }
