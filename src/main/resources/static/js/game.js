@@ -80,6 +80,8 @@ let joystickStartPos = { x: 0, y: 0 };
 let joystickCurrentPos = { x: 0, y: 0 };
 const JOYSTICK_RADIUS = 60;
 
+const FONT_MAIN = '"JetBrains Mono", "Cascadia Code", "Courier New", monospace';
+
 // Sistema de Estrellas Decorativas
 const stars = [];
 for (let i = 0; i < 1500; i++) {
@@ -1466,14 +1468,14 @@ function render() {
         
         ctx.globalAlpha = twinkle;
         ctx.fillStyle = s.color;
-        ctx.font = `${(s.size + 3) * cameraZoom}px "Cascadia Code", "Courier New", Courier, monospace`;
+        ctx.font = `${(s.size + 3) * cameraZoom}px ${FONT_MAIN}`;
         ctx.fillText(s.symbol, x, y);
     });
     ctx.globalAlpha = 1.0;
 
     // Configurar fuente para metadatos
-    const statsFont = '11px "Cascadia Code", "Courier New", Courier, monospace';
-    const defaultFont = `bold ${CELL_SIZE - 6}px "Cascadia Code", "Courier New", Courier, monospace`;
+    const statsFont = `11px ${FONT_MAIN}`;
+    const defaultFont = `bold ${CELL_SIZE - 6}px ${FONT_MAIN}`;
 
     // 3. Dibujar objetos (Players, Meteoritos, etc)
     ctx.textAlign = 'center';
@@ -1544,7 +1546,7 @@ function render() {
 
         // Elementos dinámicos (Nombre y barras)
         if (obj.hp !== undefined) {
-            ctx.font = `${11 * Math.max(0.8, cameraZoom)}px "Cascadia Code", "Courier New", Courier, monospace`;
+            ctx.font = `${11 * Math.max(0.8, cameraZoom)}px ${FONT_MAIN}`;
             
             let labelName = obj.name;
             let isBoss = false;
@@ -1807,7 +1809,7 @@ function render() {
                 // Texto de información
                 const textAlpha = Math.min(0.7, scanElapsed / 800) * scannerAlpha;
                 ctx.globalAlpha = textAlpha;
-                ctx.font = `bold ${10 * Math.max(0.8, cameraZoom)}px "Cascadia Code", "Courier New", Courier, monospace`;
+                ctx.font = `bold ${10 * Math.max(0.8, cameraZoom)}px ${FONT_MAIN}`;
                 
                 let textColor = scanData.isEnemy ? COLORS.danger : COLORS.accent;
                 if (scanData.isWormhole) textColor = COLORS.success;
@@ -1854,10 +1856,10 @@ function render() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.textAlign = 'center';
         ctx.fillStyle = COLORS.danger;
-        ctx.font = 'bold 30px "Cascadia Code", "Courier New", Courier, monospace';
+        ctx.font = `bold 30px ${FONT_MAIN}`;
         ctx.fillText('CRITICAL_FAILURE: CONNECTION_LOST', canvas.width / 2, canvas.height / 2 - 30);
         ctx.fillStyle = COLORS.accent;
-        ctx.font = '14px "Cascadia Code", "Courier New", Courier, monospace';
+        ctx.font = `14px ${FONT_MAIN}`;
         ctx.fillText('> ATTEMPTING_SECURE_REBOOT...', canvas.width / 2, canvas.height / 2 + 20);
         if (Date.now() % 1000 < 500) {
             ctx.fillStyle = COLORS.fg;
@@ -1886,7 +1888,9 @@ function render() {
     }
 
     // 7.6 Efecto Glitch por daño crítico o teletransporte
+    const terminalEl = document.getElementById('terminal');
     if (damageFlash > 0.6 || teleportFlash > 0.6) {
+        if (terminalEl) terminalEl.classList.add('glitch-active');
         ctx.save();
         const flashVal = Math.max(damageFlash, teleportFlash);
         const glitchAmount = Math.floor(flashVal * 8);
@@ -1898,6 +1902,8 @@ function render() {
             ctx.drawImage(canvas, 0, y, canvas.width, h, xOff, y, canvas.width, h);
         }
         ctx.restore();
+    } else {
+        if (terminalEl) terminalEl.classList.remove('glitch-active');
     }
 
     // 8. Dibujar Mini-mapa

@@ -14,10 +14,11 @@
 </head>
 <body>
     <div id="terminal">
+        <div class="vhs-noise"></div>
         <canvas id="gameCanvas"></canvas>
         <div id="overlay">
             <div class="hud-top">
-                <div class="hud-panel" style="padding: 10px 15px;">
+                <div class="hud-panel">
                     <div class="panel-header">SYSTEM_UPLINK</div>
                     <div style="display: flex; flex-direction: column; gap: 4px;">
                         <div>IDENTITY: <span id="player-name" class="accent clickable" title="Click to change name">ANONYMOUS</span> <span id="player-color-indicator" class="clickable" title="Click to change color">◈</span></div>
@@ -31,11 +32,11 @@
                     <div class="vital-stats">
                         <div class="stat-group">
                             <span class="panel-label">HP</span>
-                            <span id="player-hp" class="danger" style="letter-spacing: 2px;">|||||</span>
+                            <span id="player-hp" class="danger">|||||</span>
                         </div>
                         <div class="stat-group">
                             <span class="panel-label">SHD</span>
-                            <span id="player-shield" style="color: #bc8cff; letter-spacing: 2px;">(((</span>
+                            <span id="player-shield" style="color: #bc8cff;">(((</span>
                         </div>
                     </div>
 
@@ -95,13 +96,13 @@
             
 
             <div id="logs-container" style="position: absolute; bottom: 80px; left: 40px; pointer-events: auto;">
-                <div id="debug-panel" class="hud-panel" style="width: 380px; margin-bottom: 10px; display: none; font-family: 'Cascadia Code', monospace; font-size: 11px;">
+                <div id="debug-panel" class="hud-panel" style="display: none;">
                     <div class="panel-header" style="color: var(--success);">[DEBUG_SYSTEM_ACTIVE]</div>
                     <div id="debug-content">
                         <!-- Debug info will be injected here -->
                     </div>
                 </div>
-                <div class="hud-panel" style="width: 380px;">
+                <div class="hud-panel">
                     <div class="panel-header">CONSOLE_LOGS</div>
                     <div id="logs">
                         <div class="log-entry">> Initializing secure connection...</div>
@@ -116,7 +117,7 @@
             </div>
 
             <div id="minimap-container" style="position: absolute; bottom: 80px; right: 40px; pointer-events: auto;">
-                <div id="minimap-panel" class="hud-panel" style="width: 250px; padding: 10px; display: flex; flex-direction: column;">
+                <div id="minimap-panel" class="hud-panel">
                     <div class="panel-header">RADAR_SYSTEM</div>
                     <canvas id="minimapCanvas" style="height: 180px;"></canvas>
                     <div id="player-list">
