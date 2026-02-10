@@ -43,6 +43,7 @@ let lastMessageTime = 0;
 let serverTimeOffset = 0;
 const keysDown = {};
 let particles = [];
+let beams = [];
 let damageFlash = 0;
 let teleportFlash = 0;
 let explosionFlash = 0;
@@ -106,13 +107,20 @@ const bgCtx = bgCanvas.getContext('2d');
 const spriteCache = {};
 
 class Particle {
-    constructor(x, y, color, type, evx = 0, evy = 0, lifeFactor = 1.0, pattern = 'radial') {
+    constructor(x, y, color, type, evx = 0, evy = 0, lifeFactor = 1.0, pattern = 'radial', tx = null, ty = null) {
         this.x = x * CELL_SIZE;
         this.y = y * CELL_SIZE;
         this.color = color;
         this.type = type;
         this.size = Math.random() * 3 + 2;
         this.life = 1.0;
+
+        // Soporte para partículas con objetivo (succión)
+        if (tx !== null && ty !== null) {
+            this.targetX = tx * CELL_SIZE;
+            this.targetY = ty * CELL_SIZE;
+            this.isSeeking = true;
+        }
 
         // Explosiones duran más y son más rápidas
         const isBig = type === 'EXPLOSION' || type === 'DEBRIS';
@@ -148,12 +156,28 @@ class Particle {
                 const symbols = ['•', 'o', 'O', '°', '*'];
                 this.symbol = symbols[Math.floor(Math.random() * symbols.length)];
             } else {
-                this.symbol = type === 'DEBRIS' ? '#' : (type === 'COLLECT' ? '✧' : (type === 'HIT' ? '×' : (type === 'PROJECTILE_DEATH' ? '·' : (type === 'TELEPORT' ? '@' : '•'))));
+                this.symbol = type === 'DEBRIS' ? '#' : (type === 'COLLECT' ? '✧' : (type === 'MINING' ? '$' : (type === 'HIT' ? '×' : (type === 'PROJECTILE_DEATH' ? '·' : (type === 'TELEPORT' ? '@' : '•')))));
             }
         }
     }
 
     update() {
+        if (this.isSeeking) {
+            const dx = this.targetX - this.x;
+            const dy = this.targetY - this.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 5) {
+                // Movimiento suave hacia el objetivo
+                this.vx += (dx / dist) * 0.8;
+                this.vy += (dy / dist) * 0.8;
+                this.vx *= 0.85;
+                this.vy *= 0.85;
+                this.life = Math.max(0.2, this.life); // No morir antes de llegar
+            } else {
+                this.life = 0;
+            }
+        }
+
         this.x += this.vx;
         this.y += this.vy;
         this.life -= this.decay;
@@ -179,9 +203,126 @@ class Particle {
     }
 }
 
-function spawnParticles(x, y, color, type, count = 10, evx = 0, evy = 0, lifeFactor = 1.0, pattern = 'radial') {
+function spawnParticles(x, y, color, type, count = 10, evx = 0, evy = 0, lifeFactor = 1.0, pattern = 'radial', tx = null, ty = null) {
     for (let i = 0; i < count; i++) {
-        particles.push(new Particle(x, y, color, type, evx, evy, lifeFactor, pattern));
+        particles.push(new Particle(x, y, color, type, evx, evy, lifeFactor, pattern, tx, ty));
+    }
+}
+
+class Beam {
+    constructor(x1, y1, x2, y2, color) {
+        this.x1 = x1 * CELL_SIZE;
+        this.y1 = y1 * CELL_SIZE;
+        this.x2 = x2 * CELL_SIZE;
+        this.y2 = y2 * CELL_SIZE;
+        this.color = color;
+        this.life = 1.0;
+        this.decay = 0.08;
+    }
+
+    update() {
+        this.life -= this.decay;
+    }
+
+    draw(ctx, offsetX, offsetY) {
+        if (this.life <= 0) return;
+        ctx.save();
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 2 * cameraZoom * this.life;
+        ctx.globalAlpha = this.life * 0.6;
+        
+        ctx.beginPath();
+        ctx.moveTo(this.x1 * cameraZoom + offsetX, this.y1 * cameraZoom + offsetY);
+        ctx.lineTo(this.x2 * cameraZoom + offsetX, this.y2 * cameraZoom + offsetY);
+        ctx.stroke();
+        
+        // Brillo adicional
+        ctx.globalAlpha = this.life * 0.2;
+        ctx.lineWidth = 6 * cameraZoom * this.life;
+        ctx.stroke();
+        
+        ctx.restore();
+    }
+}
+
+class MiningLaser {
+    constructor(x1, y1, x2, y2, color) {
+        this.x1 = x1;
+        this.y1 = y1;
+        this.x2 = x2;
+        this.y2 = y2;
+        this.color = color;
+        this.life = 1.0;
+        this.decay = 0.05;
+        this.seed = Math.random() * 100;
+    }
+
+    update() {
+        this.life -= this.decay;
+    }
+
+    draw(ctx, offsetX, offsetY) {
+        if (this.life <= 0) return;
+        const x1 = this.x1 * CELL_SIZE * cameraZoom + offsetX;
+        const y1 = this.y1 * CELL_SIZE * cameraZoom + offsetY;
+        const x2 = this.x2 * CELL_SIZE * cameraZoom + offsetX;
+        const y2 = this.y2 * CELL_SIZE * cameraZoom + offsetY;
+
+        ctx.save();
+        
+        const dist = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        const now = Date.now();
+        
+        // Efecto de impulsos (caracteres que fluyen)
+        ctx.shadowBlur = 12 * cameraZoom * this.life;
+        ctx.shadowColor = this.color;
+        ctx.fillStyle = this.color;
+        
+        const step = 14 * cameraZoom;
+        const count = Math.floor(dist / step);
+        
+        ctx.font = `bold ${12 * cameraZoom}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Dibujar pulsos de caracteres
+        for (let i = 0; i <= count; i++) {
+            const t = i / count;
+            // Animación de flujo (impulsos) - usamos una onda senoidal para agrupar caracteres
+            const pulse = Math.sin(t * Math.PI * 5 - now * 0.02);
+            const alpha = Math.max(0, pulse) * this.life;
+            
+            if (alpha < 0.1) continue;
+
+            const px = x1 + (x2 - x1) * t;
+            const py = y1 + (y2 - y1) * t;
+            
+            // Vibración sutil
+            const noise = Math.sin(now * 0.03 + i + this.seed) * 1.5 * cameraZoom;
+            const nx = px + Math.cos(angle + Math.PI/2) * noise;
+            const ny = py + Math.sin(angle + Math.PI/2) * noise;
+            
+            // Selección de carácter: mayor frecuencia de '$'
+            const chars = ["$", "0", "$", "1"];
+            const char = chars[(i + Math.floor(now/200)) % chars.length];
+            
+            ctx.globalAlpha = alpha * 0.9;
+            ctx.fillText(char, nx, ny);
+            
+            // Destello blanco en el núcleo de los impulsos
+            if (pulse > 0.8) {
+                ctx.save();
+                ctx.fillStyle = "#FFFFFF";
+                ctx.globalAlpha = alpha * 1.0;
+                ctx.shadowBlur = 5 * cameraZoom;
+                ctx.shadowColor = "#FFFFFF";
+                ctx.fillText(char, nx, ny);
+                ctx.restore();
+            }
+        }
+
+        ctx.restore();
     }
 }
 
@@ -490,6 +631,7 @@ function updateScannedEntities() {
 
             const isEnemy = (obj.hp !== undefined && obj.id !== myPlayerId) || obj.name === 'SENTINEL' || obj.name === 'NULL' || obj.name === 'PROJECTILE';
             const isWormhole = obj.name === 'WORMHOLE';
+            const isStation = obj.name && obj.name.startsWith('STATION');
             const existing = currentScannedMap.get(obj.id);
 
             return {
@@ -499,6 +641,7 @@ function updateScannedEntities() {
                 distRaw: distCells,
                 isEnemy: isEnemy,
                 isWormhole: isWormhole,
+                isStation: isStation,
                 startTime: existing ? existing.startTime : now
             };
         })
@@ -715,8 +858,10 @@ function normalize(data) {
     const mapping = {
         'o': 'objects', 'ev': 'events', 'ef': 'effects',
         'i': 'id', 'p': 'position', 's': 'symbol', 'c': 'color', 'n': 'name',
-        'h': 'hp', 'sh': 'shield', 'co': 'copper', 'si': 'silver', 'go': 'gold',
+        'h': 'hp', 'mh': 'maxHp', 'sh': 'shield', 'ms': 'maxShield',
+        'co': 'copper', 'si': 'silver', 'go': 'gold',
         'l': 'level', 'li': 'linkedId', 'e': 'exp', 'w': 'weapon', 't': 'type', 'sz': 'size',
+        'am': 'autoMinerActive', 'tx': 'targetX', 'ty': 'targetY',
         'pi': 'playerId', 'pn': 'playerName', 'd': 'payload', 'dbg': 'debugData', 'v': 'vibration'
     };
 
@@ -866,8 +1011,15 @@ function connect() {
                             teleportFlash = 1.0;
                         }
                     }
+                } else if (e.type === 'MINING_LASER') {
+                    beams.push(new MiningLaser(e.x, e.y, e.targetX, e.targetY, e.color || '#ff00ff'));
+                    // Partículas de "succión" desde el meteorito hacia el jugador
+                    spawnParticles(e.targetX, e.targetY, e.color || '#ff00ff', 'MINING', 3, 0, 0, 2.0, 'radial', e.x, e.y);
+                    // Chispas digitales en el punto de impacto
+                    spawnParticles(e.targetX, e.targetY, e.color || '#ff00ff', 'MINING', 2, 0, 0, 1.0);
+                    return;
                 }
-                spawnParticles(e.x, e.y, e.color, e.type, count, 0, 0, lifeFactor, pattern);
+                spawnParticles(e.x, e.y, e.color, e.type, count, 0, 0, lifeFactor, pattern, e.targetX, e.targetY);
             });
         }
 
@@ -921,6 +1073,14 @@ function connect() {
                 playerSilverSpan.textContent = myPlayer.silver;
                 playerGoldSpan.textContent = myPlayer.gold;
                 
+                // Actualizar balances en el menú de la tienda si está visible
+                const shopCu = document.getElementById('shop-cu');
+                const shopAg = document.getElementById('shop-ag');
+                const shopAu = document.getElementById('shop-au');
+                if (shopCu) shopCu.textContent = myPlayer.copper;
+                if (shopAg) shopAg.textContent = myPlayer.silver;
+                if (shopAu) shopAu.textContent = myPlayer.gold;
+                
                 if (myPlayer.weapon) {
                     playerWeaponSpan.textContent = myPlayer.weapon.name;
                 }
@@ -972,7 +1132,7 @@ function sendInput(type, payload) {
 let lastPlayerListJson = '';
 function updatePlayerList() {
     const entities = gameState.objects.filter(obj => 
-        ((obj.hp !== undefined && obj.hp > 0) || obj.name === 'WORMHOLE') && 
+        ((obj.hp !== undefined && obj.hp > 0) || obj.name === 'WORMHOLE' || (obj.name && obj.name.startsWith('STATION'))) && 
         obj.id !== myPlayerId
     );
     
@@ -983,15 +1143,8 @@ function updatePlayerList() {
                 Math.pow(p.position.y - myPlayer.position.y, 2)
             );
         });
-        // Ordenar: Jefes primero, luego por distancia
-        entities.sort((a, b) => {
-            const aIsBoss = a.name === 'FIRE_WALL' || a.name === 'NULL';
-            const bIsBoss = b.name === 'FIRE_WALL' || b.name === 'NULL';
-            if (aIsBoss && !bIsBoss) return -1;
-            if (!aIsBoss && bIsBoss) return 1;
-
-            return a._distance - b._distance;
-        });
+        // Ordenar por distancia
+        entities.sort((a, b) => a._distance - b._distance);
         // Limitar a los 20 más cercanos
         if (entities.length > 20) entities.length = 20;
     } else {
@@ -1025,6 +1178,8 @@ function updatePlayerList() {
             displayName = getMatrixEffect(p.name, 0.2);
         } else if (p.name === 'WORMHOLE') {
             displayName = `> ${p.name}`;
+        } else if (p.name && p.name.startsWith('STATION')) {
+            displayName = `[STATION] ${p.name.split('_')[1] || ''}`;
         }
 
         entry.innerHTML = `
@@ -1363,6 +1518,8 @@ function render() {
         const size = obj.size || 1;
         if (obj.name === 'WORMHOLE') {
             drawWormhole(obj, ctx, offsetX, offsetY, now);
+        } else if (obj.name && obj.name.startsWith('STATION')) {
+            drawSpaceStation(obj, ctx, offsetX, offsetY, now);
         } else {
             const sprite = getSprite(obj.symbol, obj.color, glow, size);
             const padding = 15 * cameraZoom;
@@ -1432,9 +1589,44 @@ function render() {
         }
     });
 
+    // Lógica de Tienda Automática
+    if (myPlayer) {
+        const nearStation = gameState.objects.find(obj => 
+            obj.name && obj.name.startsWith('STATION') && 
+            getDistance(myPlayer.position, obj.position) < 5
+        );
+        
+        const shopPanel = document.getElementById('shop-panel');
+        if (nearStation) {
+            if (lastStationInRange !== nearStation.id) {
+                shopManualClosed = false;
+                lastStationInRange = nearStation.id;
+            }
+
+            if (!shopManualClosed) {
+                if (shopPanel.style.display === 'none' || !shopPanel.style.display) {
+                    shopPanel.style.display = 'flex';
+                }
+            }
+        } else {
+            if (shopPanel.style.display === 'flex') {
+                shopPanel.style.display = 'none';
+            }
+            lastStationInRange = null;
+            shopManualClosed = false;
+        }
+    }
+
     // 4. Actualizar y dibujar partículas
     particles = particles.filter(p => p.life > 0);
     particles.forEach(p => p.update());
+
+    // 4.0 Actualizar y dibujar rayos (Beams)
+    beams = beams.filter(b => b.life > 0);
+    beams.forEach(b => {
+        b.update();
+        b.draw(ctx, offsetX, offsetY);
+    });
 
     // 4.1 Actualizar y dibujar efectos de escáner
     scannerEffects = scannerEffects.filter(s => s.life > 0);
@@ -1580,6 +1772,7 @@ function render() {
                 ctx.arc(x, y, outlineSize / 2, 0, Math.PI * 2);
                 let scanColor = scanData.isEnemy ? COLORS.danger : COLORS.accent;
                 if (scanData.isWormhole) scanColor = COLORS.success;
+                if (scanData.isStation) scanColor = '#00ffff';
                 ctx.strokeStyle = scanColor;
                 ctx.lineWidth = 2;
                 const alpha = Math.min(0.5, scanElapsed / 500) * scannerAlpha;
@@ -1618,6 +1811,7 @@ function render() {
                 
                 let textColor = scanData.isEnemy ? COLORS.danger : COLORS.accent;
                 if (scanData.isWormhole) textColor = COLORS.success;
+                if (scanData.isStation) textColor = '#00ffff'; // Celeste para estaciones
                 ctx.fillStyle = textColor;
                 
                 ctx.textAlign = 'center';
@@ -1798,6 +1992,17 @@ function renderMinimap() {
                 minimapCtx.textAlign = 'center';
                 minimapCtx.fillText('WORMHOLE', mx, my - 8);
             }
+        } else if (obj.name && obj.name.startsWith('STATION')) {
+            // Estación Espacial
+            minimapCtx.fillStyle = '#00ffff';
+            minimapCtx.shadowBlur = 5;
+            minimapCtx.shadowColor = '#00ffff';
+            minimapCtx.beginPath();
+            minimapCtx.arc(mx, my, 3, 0, Math.PI * 2);
+            minimapCtx.fill();
+            minimapCtx.shadowBlur = 0;
+            
+            // No dibujamos nombre en el minimapa según requerimiento (solo scanner)
         }
     });
 
@@ -2047,3 +2252,113 @@ function updateJoystickMovement() {
 }
 
 animLoop();
+
+// --- Trading System ---
+let shopManualClosed = false;
+let lastStationInRange = null;
+
+function drawSpaceStation(obj, ctx, offsetX, offsetY, now) {
+    const x = obj.position.x * CELL_SIZE * cameraZoom + offsetX;
+    const y = obj.position.y * CELL_SIZE * cameraZoom + offsetY;
+    const size = (obj.size || 4) * CELL_SIZE * cameraZoom;
+    
+    ctx.save();
+    
+    // Estructura exterior giratoria
+    ctx.strokeStyle = obj.color || '#00FFFF';
+    ctx.lineWidth = 2 * cameraZoom;
+    const rotation = now * 0.0002;
+    
+    // Dibujar hexágono exterior
+    ctx.beginPath();
+    for (let i = 0; i <= 6; i++) {
+        const angle = (i * 2 * Math.PI) / 6 + rotation;
+        const lx = x + Math.cos(angle) * (size * 0.7);
+        const ly = y + Math.sin(angle) * (size * 0.7);
+        if (i === 0) ctx.moveTo(lx, ly);
+        else ctx.lineTo(lx, ly);
+    }
+    ctx.stroke();
+
+    // Brazos estáticos
+    ctx.setLineDash([5 * cameraZoom, 5 * cameraZoom]);
+    for (let i = 0; i < 4; i++) {
+        const angle = (i * Math.PI / 2) + Math.PI / 4;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(angle) * size * 0.2, y + Math.sin(angle) * size * 0.2);
+        ctx.lineTo(x + Math.cos(angle) * size, y + Math.sin(angle) * size);
+        ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Núcleo pulsante
+    const pulse = Math.sin(now * 0.003) * 0.3 + 0.7;
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, size * 0.4);
+    gradient.addColorStop(0, obj.color || '#00FFFF');
+    gradient.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = gradient;
+    ctx.globalAlpha = 0.4 * pulse;
+    ctx.beginPath();
+    ctx.arc(x, y, size * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+
+    // Símbolo central
+    ctx.font = `bold ${size * 0.5}px "Fira Code", monospace`;
+    ctx.fillStyle = obj.color || '#00FFFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(obj.symbol || '⧈', x, y);
+
+    ctx.restore();
+}
+
+function toggleShop() {
+    const shopPanel = document.getElementById('shop-panel');
+    if (shopPanel.style.display === 'none' || !shopPanel.style.display) {
+        if (!myPlayer) return;
+        
+        const nearStation = gameState.objects.find(obj => 
+            obj.name.startsWith('STATION') && 
+            getDistance(myPlayer.position, obj.position) < 10
+        );
+        
+        if (nearStation) {
+            shopPanel.style.display = 'flex';
+        } else {
+            log("[#f85149]SYSTEM_ERROR: No trading station in range.");
+        }
+    } else {
+        shopPanel.style.display = 'none';
+    }
+}
+
+function buyItem(item) {
+    sendInput('BUY', item);
+}
+
+function closeShop() {
+    document.getElementById('shop-panel').style.display = 'none';
+    shopManualClosed = true;
+}
+
+function filterShop(category, btn) {
+    const items = document.querySelectorAll('.shop-item-v5');
+    const buttons = document.querySelectorAll('.tab-btn');
+    
+    buttons.forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    items.forEach(item => {
+        if (category === 'all' || item.dataset.category === category) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+function getDistance(p1, p2) {
+    return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+}

@@ -71,7 +71,7 @@ body, html {
     border-radius: 4px;
     font-size: 12px;
     backdrop-filter: blur(8px);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(48, 54, 61, 0.5);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     pointer-events: auto;
     display: flex;
@@ -80,8 +80,8 @@ body, html {
 
 .hud-panel:hover {
     border-color: var(--accent);
-    box-shadow: 0 0 20px rgba(88, 166, 255, 0.2);
-    transform: translateY(-1px);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8), 0 0 15px rgba(88, 166, 255, 0.1);
+    transform: translateY(-2px);
 }
 
 .hud-top {
@@ -676,4 +676,208 @@ body, html {
 
 #chat-input:focus {
     color: var(--accent);
+}
+
+/* Shop Styles v5.0 - Terminal Integrated */
+.shop-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 900px;
+    height: 700px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+    background: radial-gradient(circle at top right, rgba(88, 166, 255, 0.03), transparent), var(--panel-bg) !important;
+}
+
+.shop-container:hover {
+    transform: translate(-50%, calc(-50% - 2px));
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 20px rgba(88, 166, 255, 0.1);
+}
+
+.shop-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0 6px 0 !important;
+    background: transparent;
+}
+
+.shop-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.shop-status {
+    font-size: 10px;
+    color: var(--success);
+    letter-spacing: 1px;
+    text-shadow: 0 0 5px var(--success);
+}
+
+.shop-close {
+    font-size: 11px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    border-radius: 3px;
+    transition: all 0.2s;
+}
+
+.shop-close:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: rgba(248, 81, 73, 0.1);
+}
+
+.shop-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    padding: 0;
+    min-height: 0;
+}
+
+.shop-sub-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+}
+
+.shop-balance-v5 {
+    display: flex;
+    gap: 25px;
+}
+
+.res-item {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.res-item .label {
+    font-size: 10px;
+    margin-right: 5px;
+    opacity: 0.7;
+}
+
+.shop-tabs {
+    display: flex;
+    gap: 10px;
+}
+
+.tab-btn {
+    font-size: 10px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 6px 12px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+}
+
+.tab-btn:hover {
+    color: var(--accent);
+    background: rgba(88, 166, 255, 0.05);
+}
+
+.tab-btn.active {
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    background: rgba(88, 166, 255, 0.1);
+}
+
+.shop-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 20px;
+    overflow-y: auto;
+    padding: 5px 5px 20px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    flex: 1;
+    min-height: 0;
+    scrollbar-gutter: stable;
+    align-content: start;
+}
+
+.shop-item-v5 {
+    background: rgba(13, 17, 23, 0.4);
+    border: 1px solid var(--border);
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    border-radius: 4px;
+    min-height: 160px;
+}
+
+.shop-item-v5:hover {
+    border-color: var(--accent);
+    background: rgba(88, 166, 255, 0.08);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3), inset 0 0 15px rgba(88, 166, 255, 0.1);
+    transform: translateY(-3px);
+}
+
+.item-id {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+}
+
+.shop-item-v5 .item-name {
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.shop-item-v5 .item-desc {
+    font-size: 11px;
+    color: var(--fg);
+    opacity: 0.7;
+    line-height: 1.4;
+    min-height: 32px;
+}
+
+.item-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 1px dotted var(--border);
+}
+
+.price-v5 {
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.price-v5.gold { color: #ffd700; }
+.price-v5.silver { color: #c0c0c0; }
+.price-v5.copper { color: #b87333; }
+
+.buy-label {
+    font-size: 9px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 2px;
+}
+
+.shop-item-v5:hover .buy-label {
+    color: var(--success);
+    border-color: var(--success);
+    background: rgba(63, 185, 80, 0.1);
 }

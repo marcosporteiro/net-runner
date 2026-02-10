@@ -27,10 +27,12 @@ public class Player implements GameObject {
     @JsonProperty("h")
     private double hp;
     @Builder.Default
+    @JsonProperty("mh")
     private double maxHp = 5;
     @JsonProperty("sh")
     private double shield;
     @Builder.Default
+    @JsonProperty("ms")
     private double maxShield = 0;
     @JsonProperty("co")
     private int copper;
@@ -38,6 +40,8 @@ public class Player implements GameObject {
     private int silver;
     @JsonProperty("go")
     private int gold;
+    @JsonProperty("am")
+    private boolean autoMinerActive;
     @JsonProperty("sa")
     private boolean scannerActive;
     @JsonProperty("dbg")

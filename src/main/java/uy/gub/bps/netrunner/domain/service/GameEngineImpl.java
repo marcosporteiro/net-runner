@@ -86,18 +86,43 @@ public class GameEngineImpl implements GameEngine {
         for (int i = 0; i < 5; i++) {
             spawnStandaloneMeteorite(3);
         }
+        
+        // Actualizar el grid estático para que las estructuras clave no se solapen con meteoritos
+        updateStaticGrid();
 
         // Añadir Agujeros de Gusano (Máximo 2 pares)
         for (int i = 0; i < 2; i++) {
             spawnWormholePair();
         }
 
+        // Añadir Estaciones Espaciales (3 en total)
+        for (int i = 0; i < 3; i++) {
+            spawnSpaceStation();
+        }
+
         // Los centinelas se gestionarán dinámicamente en el update()
     }
 
+    private void spawnSpaceStation() {
+        Position pos = getRandomKeyPosition(4, 50.0);
+        SpaceStation station = SpaceStation.builder()
+                .position(pos)
+                .name("STATION_" + (worldObjects.values().stream().filter(o -> o instanceof SpaceStation).count() + 1))
+                .build();
+        worldObjects.put(station.getId(), station);
+        staticObjectsChanged = true;
+    }
+
     private void spawnWormholePair() {
-        Position pos1 = getRandomEmptyPosition(5);
-        Position pos2 = getRandomEmptyPosition(5);
+        Position pos1 = getRandomKeyPosition(5, 50.0);
+        Position pos2 = getRandomKeyPosition(5, 50.0);
+        
+        // Asegurar que los dos extremos no estén pegados (mínimo 60 unidades)
+        int attempts = 0;
+        while (Math.sqrt(Math.pow(pos1.x() - pos2.x(), 2) + Math.pow(pos1.y() - pos2.y(), 2)) < 60.0 && attempts < 15) {
+            pos2 = getRandomKeyPosition(5, 50.0);
+            attempts++;
+        }
         
         Wormhole w1 = Wormhole.builder()
                 .position(pos1)
@@ -289,6 +314,36 @@ public class GameEngineImpl implements GameEngine {
         return players.values().stream().anyMatch(p -> p.getName().equalsIgnoreCase(name));
     }
 
+    private Position getRandomKeyPosition(int size, double minDistance) {
+        Position pos;
+        int attempts = 0;
+        double currentMinDist = minDistance;
+        do {
+            // Evitar bordes extremos para mejor jugabilidad
+            pos = new Position(15 + random.nextInt(WIDTH - 30), 15 + random.nextInt(HEIGHT - 30));
+            attempts++;
+            
+            if (attempts > 50) currentMinDist *= 0.95;
+            
+            final Position p = pos;
+            final double dSq = currentMinDist * currentMinDist;
+            
+            boolean tooClose = worldObjects.values().stream()
+                    .filter(o -> o instanceof SpaceStation || o instanceof Wormhole)
+                    .anyMatch(o -> {
+                        double dx = o.getPosition().x() - p.x();
+                        double dy = o.getPosition().y() - p.y();
+                        return dx*dx + dy*dy < dSq;
+                    });
+            
+            if (!tooClose && !isOccupied(pos, size)) {
+                return pos;
+            }
+        } while (attempts < 200);
+        
+        return getRandomEmptyPosition(size);
+    }
+
     private Position getRandomEmptyPosition(int size) {
         Position pos;
         int attempts = 0;
@@ -352,6 +407,125 @@ public class GameEngineImpl implements GameEngine {
             case "CHANGE_COLOR" -> handleChangeColor(player);
             case "SCANNER_STATE" -> player.setScannerActive(Boolean.parseBoolean(input.getPayload()));
             case "CHAT" -> handleChat(player, input.getPayload());
+            case "BUY" -> handleBuy(player, input.getPayload());
+        }
+    }
+
+    private void handleBuy(Player player, String item) {
+        if (item == null) return;
+        
+        // Verificar si está cerca de una estación
+        GameObject station = findFirstInGrid(player.getPosition().x(), player.getPosition().y(), 10.0, o -> o instanceof SpaceStation);
+        if (station == null) {
+            addPrivateEvent(player.getId(), "[#f85149]ERROR: No space station nearby.");
+            return;
+        }
+
+        switch (item.toUpperCase()) {
+            case "WEAPON_SHOTGUN" -> {
+                if (player.getGold() >= 10) {
+                    player.setGold(player.getGold() - 10);
+                    player.setWeapon(Weapon.shotgun());
+                    addPrivateEvent(player.getId(), "[#3fb950]SUCCESS: STREET_SWEEPER Shotgun equipped!");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 10 Gold for Shotgun.");
+                }
+            }
+            case "WEAPON_LASER" -> {
+                if (player.getGold() >= 25) {
+                    player.setGold(player.getGold() - 25);
+                    player.setWeapon(Weapon.laser());
+                    addPrivateEvent(player.getId(), "[#3fb950]SUCCESS: PULSE_LASER equipped!");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 25 Gold for Laser.");
+                }
+            }
+            case "WEAPON_MISSILE" -> {
+                if (player.getGold() >= 50) {
+                    player.setGold(player.getGold() - 50);
+                    player.setWeapon(Weapon.missile());
+                    addPrivateEvent(player.getId(), "[#3fb950]SUCCESS: HELLFIRE_MISSILE equipped!");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 50 Gold for Missiles.");
+                }
+            }
+            case "UPGRADE_SHIELD" -> {
+                if (player.getSilver() >= 50) {
+                    player.setSilver(player.getSilver() - 50);
+                    player.setMaxShield(player.getMaxShield() + 5);
+                    player.setShield(player.getMaxShield());
+                    addPrivateEvent(player.getId(), "[#3fb950]SUCCESS: Shield capacity increased!");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 50 Silver for Shield upgrade.");
+                }
+            }
+            case "UPGRADE_HP" -> {
+                if (player.getCopper() >= 100) {
+                    player.setCopper(player.getCopper() - 100);
+                    player.setMaxHp(player.getMaxHp() + 5);
+                    player.setHp(player.getMaxHp());
+                    addPrivateEvent(player.getId(), "[#3fb950]SUCCESS: Hull integrity increased!");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 100 Copper for Hull upgrade.");
+                }
+            }
+            case "REPAIR" -> {
+                if (player.getCopper() >= 20) {
+                    player.setCopper(player.getCopper() - 20);
+                    player.setHp(player.getMaxHp());
+                    addPrivateEvent(player.getId(), "[#3fb950]SUCCESS: Hull repaired.");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 20 Copper for Repairs.");
+                }
+            }
+            case "UPGRADE_AUTO_MINER" -> {
+                if (player.isAutoMinerActive()) {
+                    addPrivateEvent(player.getId(), "[#f85149]ERROR: AUTO_EXTRACTOR already active.");
+                } else if (player.getGold() >= 30) {
+                    player.setGold(player.getGold() - 30);
+                    player.setAutoMinerActive(true);
+                    addPrivateEvent(player.getId(), "[#3fb950]SUCCESS: AUTO_EXTRACTOR online. Nearby meteorites will be harvested.");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 30 Gold for AUTO_EXTRACTOR.");
+                }
+            }
+            case "TRADE_AU_TO_AG" -> {
+                if (player.getGold() >= 1) {
+                    player.setGold(player.getGold() - 1);
+                    player.setSilver(player.getSilver() + 4);
+                    addPrivateEvent(player.getId(), "[#3fb950]EXCHANGE: 1 Gold converted to 4 Silver.");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 1 Gold for exchange.");
+                }
+            }
+            case "TRADE_AG_TO_AU" -> {
+                if (player.getSilver() >= 6) {
+                    player.setSilver(player.getSilver() - 6);
+                    player.setGold(player.getGold() + 1);
+                    addPrivateEvent(player.getId(), "[#3fb950]EXCHANGE: 6 Silver converted to 1 Gold.");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 6 Silver for exchange.");
+                }
+            }
+            case "TRADE_AG_TO_CU" -> {
+                if (player.getSilver() >= 1) {
+                    player.setSilver(player.getSilver() - 1);
+                    player.setCopper(player.getCopper() + 4);
+                    addPrivateEvent(player.getId(), "[#3fb950]EXCHANGE: 1 Silver converted to 4 Copper.");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 1 Silver for exchange.");
+                }
+            }
+            case "TRADE_CU_TO_AG" -> {
+                if (player.getCopper() >= 6) {
+                    player.setCopper(player.getCopper() - 6);
+                    player.setSilver(player.getSilver() + 1);
+                    addPrivateEvent(player.getId(), "[#3fb950]EXCHANGE: 6 Copper converted to 1 Silver.");
+                } else {
+                    addPrivateEvent(player.getId(), "[#f85149]NEED: 6 Copper for exchange.");
+                }
+            }
+            default -> addPrivateEvent(player.getId(), "[#f85149]ERROR: Unknown item.");
         }
     }
 
@@ -713,26 +887,6 @@ public class GameEngineImpl implements GameEngine {
         if (player.getExp() >= expNeeded) {
             player.setExp(player.getExp() - expNeeded);
             player.setLevel(player.getLevel() + 1);
-            player.setHp(5.0); // Heal on level up
-            player.setShield(0);
-            
-            // Progresión de escudos: +1 de capacidad cada nivel hasta un máximo de 3
-            if (player.getMaxShield() < 3) {
-                player.setMaxShield(player.getMaxShield() + 1);
-                pendingEvents.add("[" + player.getColor() + "]Agent " + player.getName() + " [#58a6ff]shield capacity upgraded!");
-            }
-
-            // Progresión de armas
-            if (player.getLevel() == 2) {
-                player.setWeapon(Weapon.shotgun());
-                pendingEvents.add("[" + player.getColor() + "]Agent " + player.getName() + " [#58a6ff]unlocked STREET_SWEEPER (Shotgun)!");
-            } else if (player.getLevel() == 4) {
-                player.setWeapon(Weapon.laser());
-                pendingEvents.add("[" + player.getColor() + "]Agent " + player.getName() + " [#58a6ff]unlocked PULSE_LASER!");
-            } else if (player.getLevel() == 6) {
-                player.setWeapon(Weapon.missile());
-                pendingEvents.add("[" + player.getColor() + "]Agent " + player.getName() + " [#58a6ff]unlocked HELLFIRE_MISSILES!");
-            }
 
             pendingEvents.add("[" + player.getColor() + "]Agent " + player.getName() + " [#58a6ff]leveled up to Lvl " + player.getLevel() + "!");
         }
@@ -780,25 +934,39 @@ public class GameEngineImpl implements GameEngine {
                 } else if (obj instanceof Meteorite met) {
                     met.setHealth(met.getHealth() - damage);
                     if (met.getHealth() <= 0) {
-                        destroyMeteorite(met);
+                        destroyMeteorite(met, null);
                     }
                 }
             }
         }
     }
 
-    private void destroyMeteorite(Meteorite met) {
+    private void destroyMeteorite(Meteorite met, Player collector) {
         if (worldObjects.remove(met.getId()) != null) {
             staticObjectsChanged = true;
         }
         pendingEffects.add(new VisualEffect("DEBRIS", met.getPosition().x(), met.getPosition().y(), met.getColor(), met.getSize()));
         if (met.isHasResources()) {
-            Ore ore = Ore.builder()
-                    .position(met.getPosition())
-                    .type(met.getResourceType())
-                    .build();
-            worldObjects.put(ore.getId(), ore);
-            staticObjectsChanged = true;
+            if (collector != null) {
+                // Auto-recolección para el láser
+                Ore.OreType type = met.getResourceType();
+                if (type == Ore.OreType.COPPER) collector.setCopper(collector.getCopper() + 1);
+                else if (type == Ore.OreType.SILVER) collector.setSilver(collector.getSilver() + 1);
+                else if (type == Ore.OreType.GOLD) collector.setGold(collector.getGold() + 1);
+                
+                addExperience(collector, type.value / 2);
+                collector.setScore(collector.getScore() + type.value);
+                
+                // Efecto de recolección física (partículas que viajan hacia el jugador)
+                pendingEffects.add(new VisualEffect("COLLECT", met.getPosition().x(), met.getPosition().y(), collector.getPosition().x(), collector.getPosition().y(), "#ff00ff"));
+            } else {
+                Ore ore = Ore.builder()
+                        .position(met.getPosition())
+                        .type(met.getResourceType())
+                        .build();
+                worldObjects.put(ore.getId(), ore);
+                staticObjectsChanged = true;
+            }
         }
     }
 
@@ -819,7 +987,7 @@ public class GameEngineImpl implements GameEngine {
         if (hit instanceof Meteorite met) {
             met.setHealth(met.getHealth() - damage);
             if (met.getHealth() <= 0) {
-                destroyMeteorite(met);
+                destroyMeteorite(met, null);
             } else {
                 pendingEffects.add(new VisualEffect("HIT", met.getPosition().x(), met.getPosition().y(), met.getColor()));
             }
@@ -991,6 +1159,29 @@ public class GameEngineImpl implements GameEngine {
             }, virtualExecutor));
         }
         java.util.concurrent.CompletableFuture.allOf(sentinelFutures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
+
+        // Minería automática (Daño distribuido para mayor fluidez visual)
+        if (tickCount % 5 == 0) {
+            for (Player p : players.values()) {
+                if (p.getRespawnTimer() == 0 && p.isAutoMinerActive()) {
+                    GameObject nearestMet = findFirstInGrid(p.getPosition().x(), p.getPosition().y(), 6.0, o -> o instanceof Meteorite);
+                    if (nearestMet instanceof Meteorite met) {
+                        double damage = 1.0 / 6.0; // Mismo daño por segundo (aprox)
+                        met.setHealth(met.getHealth() - damage);
+                        if (met.getHealth() <= 0) {
+                            destroyMeteorite(met, p);
+                        } else {
+                            // Efecto de impacto ocasional para no saturar
+                            if (tickCount % 15 == 0) {
+                                pendingEffects.add(new VisualEffect("HIT", met.getPosition().x(), met.getPosition().y(), "#ff00ff"));
+                            }
+                        }
+                        // Efecto visual de láser de extracción
+                        pendingEffects.add(new VisualEffect("MINING_LASER", p.getPosition().x(), p.getPosition().y(), met.getPosition().x(), met.getPosition().y(), "#ff00ff"));
+                    }
+                }
+            }
+        }
 
         // Recarga de escudos lenta
         if (random.nextInt(300) < 1) { // ~cada 5 segundos a 60fps
@@ -1240,19 +1431,6 @@ public class GameEngineImpl implements GameEngine {
                     
                     addExperience(player, ore.getType().value / 2);
                     
-                    if (player.getHp() < 5) {
-                        int healAmount = switch (ore.getType()) {
-                            case COPPER -> 1;
-                            case SILVER -> 2;
-                            case GOLD -> 3;
-                        };
-                        double oldHp = player.getHp();
-                        player.setHp(Math.min(5.0, player.getHp() + healAmount));
-                        if (player.getHp() > oldHp) {
-                            pendingEvents.add("[" + player.getColor() + "]" + player.getName() + " [#3fb950]integrity restored (+" + (player.getHp() - oldHp) + " HP)");
-                        }
-                    }
-
                     player.setScore(player.getScore() + ore.getType().value);
                     pendingEffects.add(new VisualEffect("COLLECT", obj.getPosition().x(), obj.getPosition().y(), obj.getColor()));
                 }
@@ -1463,9 +1641,9 @@ public class GameEngineImpl implements GameEngine {
                 .forEach(resultSet::add);
         resultSet.addAll(sentinels.values());
         
-        // Incluir todos los agujeros de gusano en el radar
+        // Incluir todos los agujeros de gusano y estaciones en el radar
         worldObjects.values().stream()
-                .filter(o -> o instanceof Wormhole)
+                .filter(o -> o instanceof Wormhole || o instanceof SpaceStation)
                 .forEach(resultSet::add);
 
         // 3. Nodos de Datos (Radar Extendido)

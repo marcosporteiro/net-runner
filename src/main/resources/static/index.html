@@ -134,6 +134,143 @@
                 </div>
             </div>
 
+            <!-- Redesigned Shop Panel v5.0 -->
+            <div id="shop-panel" class="hud-panel shop-container" style="display: none; pointer-events: auto; z-index: 100;">
+                <div class="panel-header shop-header">
+                    <span>BLACK_MARKET_TERMINAL // v5.0</span>
+                    <div class="shop-controls">
+                        <span class="shop-status">SECURE_LINK_ESTABLISHED</span>
+                        <span class="shop-close clickable" onclick="closeShop()">[EXIT]</span>
+                    </div>
+                </div>
+                
+                <div class="shop-content-wrapper">
+                    <div class="shop-sub-header">
+                        <div class="shop-balance-v5">
+                            <div class="res-item"><span class="label" style="color: #b87333;">CU</span> <span id="shop-cu">0</span></div>
+                            <div class="res-item"><span class="label" style="color: #c0c0c0;">AG</span> <span id="shop-ag">0</span></div>
+                            <div class="res-item"><span class="label" style="color: #ffd700;">AU</span> <span id="shop-au">0</span></div>
+                        </div>
+                        <nav class="shop-tabs">
+                            <div class="tab-btn active" onclick="filterShop('all', this)">[ ALL_ENTRIES ]</div>
+                            <div class="tab-btn" onclick="filterShop('arm', this)">[ ARMAMENT ]</div>
+                            <div class="tab-btn" onclick="filterShop('sys', this)">[ UPGRADES ]</div>
+                            <div class="tab-btn" onclick="filterShop('spc', this)">[ SPECIAL ]</div>
+                            <div class="tab-btn" onclick="filterShop('exc', this)">[ EXCHANGE ]</div>
+                        </nav>
+                    </div>
+
+                    <div id="shop-items" class="shop-grid">
+                        <!-- ARMAMENT -->
+                        <div class="shop-item-v5" data-category="arm" onclick="buyItem('WEAPON_SHOTGUN')">
+                            <div class="item-id">#WPN_01</div>
+                            <div class="item-name">STREET_SWEEPER</div>
+                            <div class="item-desc">High-spread combat shotgun modules.</div>
+                            <div class="item-footer">
+                                <span class="price-v5 gold">10 AU</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+                        <div class="shop-item-v5" data-category="arm" onclick="buyItem('WEAPON_LASER')">
+                            <div class="item-id">#WPN_02</div>
+                            <div class="item-name">PULSE_LASER</div>
+                            <div class="item-desc">High-frequency accurate beam system.</div>
+                            <div class="item-footer">
+                                <span class="price-v5 gold">25 AU</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+                        <div class="shop-item-v5" data-category="arm" onclick="buyItem('WEAPON_MISSILE')">
+                            <div class="item-id">#WPN_03</div>
+                            <div class="item-name">HELLFIRE_MISSILE</div>
+                            <div class="item-desc">Massive explosive ordinance arrays.</div>
+                            <div class="item-footer">
+                                <span class="price-v5 gold">50 AU</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+
+                        <!-- UPGRADES -->
+                        <div class="shop-item-v5" data-category="sys" onclick="buyItem('UPGRADE_SHIELD')">
+                            <div class="item-id">#SYS_01</div>
+                            <div class="item-name">SHIELD_CAPACITY</div>
+                            <div class="item-desc">Reinforce buffer layers [+5 SHD].</div>
+                            <div class="item-footer">
+                                <span class="price-v5 silver">50 AG</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+                        <div class="shop-item-v5" data-category="sys" onclick="buyItem('UPGRADE_HP')">
+                            <div class="item-id">#SYS_02</div>
+                            <div class="item-name">HULL_INTEGRITY</div>
+                            <div class="item-desc">Reinforce physical structure [+5 HP].</div>
+                            <div class="item-footer">
+                                <span class="price-v5 copper">100 CU</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+                        <div class="shop-item-v5" data-category="sys" onclick="buyItem('REPAIR')">
+                            <div class="item-id">#SYS_03</div>
+                            <div class="item-name">FULL_REPAIR</div>
+                            <div class="item-desc">Restore all hull integrity systems.</div>
+                            <div class="item-footer">
+                                <span class="price-v5 copper">20 CU</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+
+                        <!-- SPECIAL -->
+                        <div class="shop-item-v5" data-category="spc" onclick="buyItem('UPGRADE_AUTO_MINER')">
+                            <div class="item-id">#SPC_01</div>
+                            <div class="item-name">AUTO_EXTRACTOR</div>
+                            <div class="item-desc">Autonomous resource harvester unit.</div>
+                            <div class="item-footer">
+                                <span class="price-v5 gold">30 AU</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+
+                        <!-- EXCHANGE -->
+                        <div class="shop-item-v5" data-category="exc" onclick="buyItem('TRADE_AU_TO_AG')">
+                            <div class="item-id">#EXC_01</div>
+                            <div class="item-name">AU -> AG</div>
+                            <div class="item-desc">Convert 1 GOLD into 4 SILVER.</div>
+                            <div class="item-footer">
+                                <span class="price-v5 gold">1 AU</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+                        <div class="shop-item-v5" data-category="exc" onclick="buyItem('TRADE_AG_TO_AU')">
+                            <div class="item-id">#EXC_02</div>
+                            <div class="item-name">AG -> AU</div>
+                            <div class="item-desc">Convert 6 SILVER into 1 GOLD.</div>
+                            <div class="item-footer">
+                                <span class="price-v5 silver">6 AG</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+                        <div class="shop-item-v5" data-category="exc" onclick="buyItem('TRADE_AG_TO_CU')">
+                            <div class="item-id">#EXC_03</div>
+                            <div class="item-name">AG -> CU</div>
+                            <div class="item-desc">Convert 1 SILVER into 4 COPPER.</div>
+                            <div class="item-footer">
+                                <span class="price-v5 silver">1 AG</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+                        <div class="shop-item-v5" data-category="exc" onclick="buyItem('TRADE_CU_TO_AG')">
+                            <div class="item-id">#EXC_04</div>
+                            <div class="item-name">CU -> AG</div>
+                            <div class="item-desc">Convert 6 COPPER into 1 SILVER.</div>
+                            <div class="item-footer">
+                                <span class="price-v5 copper">6 CU</span>
+                                <span class="buy-label">INIT_BUY</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div id="mobile-controls">
                 <div id="joystick-zone">
                     <div id="joystick-base">
