@@ -27,6 +27,8 @@ public class Weapon {
     private ShotPattern pattern;
     private double projectileSpeed;
     private String projectileSymbol;
+    @Builder.Default
+    private double vibration = 0.1;
 
     public static Weapon basic() {
         return Weapon.builder()
@@ -36,8 +38,9 @@ public class Weapon {
                 .fireRate(400)
                 .spread(0.12)
                 .pattern(ShotPattern.SINGLE)
-                .projectileSpeed(0.3)
+                .projectileSpeed(0.5)
                 .projectileSymbol("•")
+                .vibration(0.15)
                 .build();
     }
 
@@ -49,8 +52,9 @@ public class Weapon {
                 .fireRate(800)
                 .spread(0.55) // High spread
                 .pattern(ShotPattern.SPREAD)
-                .projectileSpeed(0.25)
+                .projectileSpeed(0.4)
                 .projectileSymbol("·")
+                .vibration(0.35)
                 .build();
     }
 
@@ -62,8 +66,9 @@ public class Weapon {
                 .fireRate(1200)
                 .spread(0.1)
                 .pattern(ShotPattern.MISSILE)
-                .projectileSpeed(0.18) // Slower but powerful
+                .projectileSpeed(0.25) // Slower but powerful
                 .projectileSymbol("▲")
+                .vibration(0.5)
                 .build();
     }
 
@@ -75,8 +80,9 @@ public class Weapon {
                 .fireRate(150) // Fast fire rate
                 .spread(0.06) // Very accurate
                 .pattern(ShotPattern.LASER)
-                .projectileSpeed(0.5) // Very fast
+                .projectileSpeed(0.8) // Very fast
                 .projectileSymbol("-")
+                .vibration(0.05)
                 .build();
     }
 }

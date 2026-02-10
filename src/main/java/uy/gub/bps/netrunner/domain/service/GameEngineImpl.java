@@ -24,6 +24,7 @@ public class GameEngineImpl implements GameEngine {
     private final java.util.Queue<String> pendingEvents = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private final Map<UUID, java.util.Queue<String>> privateEvents = new ConcurrentHashMap<>();
     private final java.util.Queue<VisualEffect> pendingEffects = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private final Map<UUID, Double> pendingVibrations = new ConcurrentHashMap<>();
     private final Random random = new Random();
     private final java.util.concurrent.ExecutorService virtualExecutor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
 
@@ -101,11 +102,13 @@ public class GameEngineImpl implements GameEngine {
         Wormhole w1 = Wormhole.builder()
                 .position(pos1)
                 .size(5)
+                .spawnTime(System.currentTimeMillis())
                 .build();
         Wormhole w2 = Wormhole.builder()
                 .position(pos2)
                 .linkedId(w1.getId())
                 .size(5)
+                .spawnTime(System.currentTimeMillis())
                 .build();
         w1.setLinkedId(w2.getId());
         
@@ -559,6 +562,7 @@ public class GameEngineImpl implements GameEngine {
         player.setLastShotTime(now);
 
         fireWeapon(player.getId(), player.getPosition(), player.getColor(), w, targetX, targetY);
+        addVibration(player.getId(), w.getVibration());
     }
 
     private void handleShootTowards(Player player, double targetX, double targetY) {
@@ -569,6 +573,11 @@ public class GameEngineImpl implements GameEngine {
         player.setLastShotTime(now);
 
         fireWeapon(player.getId(), player.getPosition(), player.getColor(), w, targetX, targetY);
+        addVibration(player.getId(), w.getVibration());
+    }
+
+    private void addVibration(UUID playerId, double amount) {
+        pendingVibrations.merge(playerId, amount, (oldVal, newVal) -> Math.min(1.0, oldVal + newVal));
     }
 
     private void fireWeapon(UUID ownerId, Position pos, String color, Weapon weapon, double targetX, double targetY) {
@@ -629,6 +638,7 @@ public class GameEngineImpl implements GameEngine {
 
     private void damagePlayer(Player hitPlayer, UUID shooterId, double damage) {
         pendingEffects.add(new VisualEffect("HIT", hitPlayer.getPosition().x(), hitPlayer.getPosition().y(), hitPlayer.getColor()));
+        addVibration(hitPlayer.getId(), 0.3);
         double remainingDamage = damage;
         if (hitPlayer.getShield() > 0) {
             double shieldDamage = Math.min(hitPlayer.getShield(), remainingDamage);
@@ -730,6 +740,21 @@ public class GameEngineImpl implements GameEngine {
 
     private void handleExplosion(Position pos, UUID shooterId, double damage, String color) {
         pendingEffects.add(new VisualEffect("EXPLOSION", pos.x(), pos.y(), color, 2));
+        
+        // Vibración para jugadores cercanos
+        for (Player p : players.values()) {
+            double dx = p.getPosition().x() - pos.x();
+            double dy = p.getPosition().y() - pos.y();
+            double distSq = dx * dx + dy * dy;
+            if (distSq < 25 * 25) { // 25 unidades de radio
+                double dist = Math.sqrt(distSq);
+                double vib = (1.0 - dist / 25.0) * 0.5;
+                if (vib > 0) {
+                    addVibration(p.getId(), vib);
+                }
+            }
+        }
+
         double explosionRadius = 2.5;
         
         // Buscamos en un rango ampliado para encontrar objetos grandes
@@ -861,6 +886,21 @@ public class GameEngineImpl implements GameEngine {
 
         if (tickCount % 30 == 0) {
             manageSentinels();
+            
+            // Gestionar colapso de Wormholes
+            boolean removed = worldObjects.values().removeIf(obj -> {
+                if (obj instanceof Wormhole wh && wh.getSpawnTime() < 0) {
+                    long collapseStart = -wh.getSpawnTime();
+                    if (System.currentTimeMillis() - collapseStart > 2000) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+            if (removed) {
+                staticObjectsChanged = true;
+                spawnWormholePair();
+            }
         }
 
         // Spawn Boss every 5 minutes if there are players
@@ -1268,6 +1308,9 @@ public class GameEngineImpl implements GameEngine {
         Wormhole targetWh = (Wormhole) worldObjects.get(wh.getLinkedId());
         if (targetWh == null) return;
 
+        // Comprobar si el wormhole está colapsando
+        if (wh.getSpawnTime() < 0 || targetWh.getSpawnTime() < 0) return;
+
         Position targetPos = targetWh.getPosition();
         Position exitPos = targetPos;
         
@@ -1296,11 +1339,16 @@ public class GameEngineImpl implements GameEngine {
         
         // 25% chance of destruction and respawn elsewhere
         if (random.nextDouble() < 0.25) {
-            worldObjects.remove(wh.getId());
-            worldObjects.remove(targetWh.getId());
-            staticObjectsChanged = true;
-            pendingEvents.add("[#3fb950]Wormhole collapsed due to instability. Re-spawning...");
-            spawnWormholePair();
+            // En lugar de borrar instantáneamente, marcamos para fade-out (spawnTime negativo)
+            long collapseTime = -System.currentTimeMillis();
+            wh.setSpawnTime(collapseTime);
+            targetWh.setSpawnTime(collapseTime);
+            
+            pendingEvents.add("[#3fb950]Wormhole stability lost. Collapse imminent...");
+            
+            // Programamos la creación de nuevos wormholes y la eliminación de estos para más tarde
+            // (En el loop principal de update o mediante un temporizador, pero aquí lo haremos simple
+            //  dejando que existan hasta que desaparezcan visualmente)
         }
     }
 
@@ -1388,7 +1436,7 @@ public class GameEngineImpl implements GameEngine {
         allObjects.addAll(players.values());
         allObjects.addAll(sentinels.values());
         allObjects.addAll(projectiles.values());
-        return new GameState(allObjects, new ArrayList<>(), new ArrayList<>(), null);
+        return new GameState(allObjects, new ArrayList<>(), new ArrayList<>(), 0.0, null);
     }
 
     @Override
@@ -1435,6 +1483,8 @@ public class GameEngineImpl implements GameEngine {
         
         List<GameObject> result = new ArrayList<>(resultSet);
         
+        Double vibration = pendingVibrations.remove(playerId);
+        
         java.util.Map<String, Object> debugData = null;
         if (player.isDebugMode()) {
             debugData = new java.util.HashMap<>();
@@ -1454,6 +1504,6 @@ public class GameEngineImpl implements GameEngine {
             debugData.put("world_objs", worldObjects.size());
         }
         
-        return new GameState(result, new ArrayList<>(), new ArrayList<>(), debugData);
+        return new GameState(result, new ArrayList<>(), new ArrayList<>(), vibration, debugData);
     }
 }

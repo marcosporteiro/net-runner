@@ -38,6 +38,10 @@ public class Wormhole implements GameObject {
     @Builder.Default
     private int size = 5;
 
+    @JsonProperty("st")
+    @Builder.Default
+    private long spawnTime = System.currentTimeMillis();
+
     @Override
     public UUID getId() {
         return id;

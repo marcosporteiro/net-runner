@@ -40,11 +40,14 @@ let gameState = { objects: [] };
 let myPlayerId = null;
 let myPlayer = null;
 let lastMessageTime = 0;
+let serverTimeOffset = 0;
 const keysDown = {};
 let particles = [];
 let damageFlash = 0;
 let teleportFlash = 0;
 let explosionFlash = 0;
+let screenShake = 0;
+const SHAKE_DECAY = 0.03;
 let scannerEffects = [];
 let scannedEntities = []; // Almacena info de escaneo: { id, label, distance, startTime }
 let isScannerActive = false;
@@ -110,12 +113,12 @@ class Particle {
         this.type = type;
         this.size = Math.random() * 3 + 2;
         this.life = 1.0;
-        
+
         // Explosiones duran más y son más rápidas
         const isBig = type === 'EXPLOSION' || type === 'DEBRIS';
         const isThruster = type === 'THRUSTER';
         const isTrail = type === 'PROJECTILE_TRAIL';
-        
+
         if (isThruster || isTrail) {
             this.decay = (isThruster ? (Math.random() * 0.12 + 0.06) : (Math.random() * 0.08 + 0.04)) / lifeFactor;
             // Movimiento opuesto a la entidad
@@ -126,10 +129,10 @@ class Particle {
             this.size = isThruster ? (Math.random() * 2 + 1) : (Math.random() * 1.5 + 0.5);
         } else {
             this.decay = (isBig ? (Math.random() * 0.015 + 0.005) : (Math.random() * 0.05 + 0.02)) / lifeFactor;
-            
+
             const angle = Math.random() * Math.PI * 2;
             let speed = isBig ? (Math.random() * 4 + 1) : (Math.random() * 2 + 0.5);
-            
+
             if (isBig) {
                 if (pattern === 'ring') {
                     speed = 6 + Math.random() * 2;
@@ -140,7 +143,7 @@ class Particle {
 
             this.vx = Math.cos(angle) * speed;
             this.vy = Math.sin(angle) * speed;
-            
+
             if (type === 'EXPLOSION') {
                 const symbols = ['•', 'o', 'O', '°', '*'];
                 this.symbol = symbols[Math.floor(Math.random() * symbols.length)];
@@ -154,7 +157,7 @@ class Particle {
         this.x += this.vx;
         this.y += this.vy;
         this.life -= this.decay;
-        
+
         // Fricción dinámica: las explosiones frenan de forma más pesada
         const friction = this.type === 'EXPLOSION' ? 0.92 : 0.95;
         this.vx *= friction;
@@ -163,12 +166,12 @@ class Particle {
 
     draw(ctx, offsetX, offsetY) {
         if (this.life <= 0) return;
-        
+
         ctx.save();
         ctx.globalAlpha = Math.min(1.0, this.life);
-        
+
         let drawColor = this.color;
-        
+
         ctx.fillStyle = drawColor;
         ctx.font = `${(this.size + 4) * cameraZoom}px monospace`;
         ctx.fillText(this.symbol, this.x * cameraZoom + offsetX, this.y * cameraZoom + offsetY);
@@ -186,12 +189,12 @@ function spawnParticles(x, y, color, type, count = 10, evx = 0, evy = 0, lifeFac
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$#@&%*<>[]{}";
     // Estabilizamos el efecto por tiempo (cambia cada 250ms)
     const t = Math.floor(Date.now() / 250);
-    
+
     return text.split('').map((c, i) => {
         // Pseudo-aleatorio estable para esta ventana de tiempo y posición
         const seed = t + (i * 10);
         const pseudoRand = Math.abs(Math.sin(seed) * 10000) % 1;
-        
+
         if (pseudoRand < intensity) {
             const charIdx = Math.floor(Math.abs(Math.sin(seed * 2) * 10000) % chars.length);
             return chars[charIdx];
@@ -203,16 +206,16 @@ function spawnParticles(x, y, color, type, count = 10, evx = 0, evy = 0, lifeFac
 function getFireWallEffect(text) {
     const t = Math.floor(Date.now() / 200);
     const fireChars = ["!", "█", "▓", "▒", "░", "*", "^", "v"];
-    
+
     return text.split('').map((c, i) => {
         const seed = t + (i * 13);
         const pseudoRand = Math.abs(Math.sin(seed) * 10000) % 1;
-        
+
         // Efecto de "llama": algunas letras se vuelven bloques o símbolos de fuego
         if (pseudoRand < 0.2) {
             return fireChars[Math.floor(pseudoRand * fireChars.length * 5) % fireChars.length];
         }
-        
+
         // Algunas letras cambian a mayúsculas/minúsculas de forma agresiva (glitch)
         if (pseudoRand > 0.9) {
             return c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase();
@@ -236,7 +239,7 @@ class ScannerEffect {
         this.radius += this.speed;
         this.life -= 0.025;
         this.speed *= 0.97; // Desaceleración suave
-        
+
         // Generar partículas de escaneo (0s y 1s) a lo largo del círculo
         if (this.life > 0.2) {
             this.particleDelay++;
@@ -256,7 +259,7 @@ class ScannerEffect {
     }
     draw(ctx, offsetX, offsetY) {
         ctx.save();
-        
+
         // Anillo principal
         ctx.beginPath();
         ctx.arc(this.x * cameraZoom + offsetX, this.y * cameraZoom + offsetY, this.radius * cameraZoom, 0, Math.PI * 2);
@@ -264,7 +267,7 @@ class ScannerEffect {
         ctx.globalAlpha = this.life * 0.5;
         ctx.lineWidth = 2 * cameraZoom;
         ctx.stroke();
-        
+
         // Segundo anillo más fino para efecto de "escaneo de barrido"
         if (this.radius > 50) {
             ctx.beginPath();
@@ -273,7 +276,7 @@ class ScannerEffect {
             ctx.globalAlpha = this.life * 0.25;
             ctx.stroke();
         }
-        
+
         ctx.restore();
     }
 }
@@ -282,25 +285,50 @@ let scannerStartTime = 0;
 let scannerFadeFactor = 0; // 0 a 1 para manejar transiciones suaves
 let lastScannerDeactivateTime = 0;
 const SCANNER_FADE_DURATION = 500;
-    
+
     function drawWormhole(obj, ctx, offsetX, offsetY, now) {
         const x = obj.position.x * CELL_SIZE * cameraZoom + offsetX;
         const y = obj.position.y * CELL_SIZE * cameraZoom + offsetY;
         const size = (obj.size || 5) * CELL_SIZE * cameraZoom;
-    
+
         ctx.save();
-    
-        // 0. Brillo de fondo potente (Bloom)
-        const bloomSize = size * (1.2 + 0.1 * Math.sin(now * 0.002));
+
+        // Efecto de aparición/desaparición suave (Fade-in / Fade-out)
+        let opacity = 1.0;
+        const FADE_DURATION = 2000;
+        const synchronizedNow = now + serverTimeOffset;
+
+        if (obj.st) {
+            if (obj.st > 0) {
+                // Fade-in
+                const age = synchronizedNow - obj.st;
+                if (age < FADE_DURATION) {
+                    opacity = Math.max(0, age / FADE_DURATION);
+                }
+            } else {
+                // Fade-out (st es negativo)
+                const collapseStartTime = -obj.st;
+                const collapseElapsed = synchronizedNow - collapseStartTime;
+                opacity = Math.max(0, 1.0 - (collapseElapsed / FADE_DURATION));
+            }
+        }
+        ctx.globalAlpha = opacity;
+
+        // 0. Brillo de fondo potente (Bloom) - Oscilación más suave
+        // Usamos una función de pulso más natural (seno suavizado)
+        const pulse = Math.sin(now * 0.002); 
+        const smoothPulse = (pulse + 1) / 2; // Rango [0, 1]
+        
+        const bloomSize = size * (1.1 + 0.3 * smoothPulse);
         const glowGrad = ctx.createRadialGradient(x, y, 0, x, y, bloomSize);
         glowGrad.addColorStop(0, obj.color);
-        glowGrad.addColorStop(0.2, obj.color + "88");
-        glowGrad.addColorStop(0.5, obj.color + "33");
+        glowGrad.addColorStop(0.3, obj.color + "66");
+        glowGrad.addColorStop(0.6, obj.color + "22");
         glowGrad.addColorStop(1, "transparent");
         
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = 0.4 + 0.1 * Math.sin(now * 0.002);
+        ctx.globalAlpha = (0.1 + 0.4 * smoothPulse) * opacity;
         ctx.fillStyle = glowGrad;
         ctx.beginPath();
         ctx.arc(x, y, bloomSize, 0, Math.PI * 2);
@@ -321,20 +349,20 @@ const SCANNER_FADE_DURATION = 500;
                 for (let i = 0; i < flowCount; i++) {
                     const flowT = (now * 0.0008 + i / flowCount) % 1.0;
                     // Dibujar un rastro que se extiende más para indicar dirección
-                    const maxFlowDist = 160 * cameraZoom; 
-                    const flowDist = maxFlowDist * flowT; 
-                    
+                    const maxFlowDist = 160 * cameraZoom;
+                    const flowDist = maxFlowDist * flowT;
+
                     ctx.fillStyle = obj.color;
                     ctx.font = `${3.5 * cameraZoom}px monospace`;
-                    
+
                     // Dibujar 3 símbolos seguidos para dar sensación de "partícula larga" (streak)
                     for (let j = 0; j < 3; j++) {
                         const subDist = flowDist - (j * 5 * cameraZoom);
                         if (subDist < 0) continue;
-                        
+
                         const fx = x + Math.cos(angleToTarget) * subDist;
                         const fy = y + Math.sin(angleToTarget) * subDist;
-                        
+
                         // Desvanecer la cola de la partícula
                         ctx.globalAlpha = (1.0 - flowT) * 0.6 * (1.0 - j * 0.3);
                         ctx.fillText('@', fx, fy);
@@ -344,66 +372,83 @@ const SCANNER_FADE_DURATION = 500;
         }
 
         // Dibujar el símbolo central con mucho brillo
-        const sprite = getSprite(obj.symbol, obj.color, 100, obj.size || 5);
+        // Usamos un valor de brillo fijo para aprovechar el cache y no saturar la memoria
+        const fixedGlow = 100;
+        const sprite = getSprite(obj.symbol, obj.color, fixedGlow, obj.size || 5);
         const padding = 25 * cameraZoom;
-        const sSize = (obj.size || 5) * CELL_SIZE * cameraZoom + padding * 2;
+        
+        // El tamaño del sprite ahora pulsa sutilmente en sincronía con el bloom
+        const pulseScale = 1.0 + 0.1 * smoothPulse;
+        const sSize = ((obj.size || 5) * CELL_SIZE * cameraZoom + padding * 2) * pulseScale;
+        
+        ctx.save();
+        // Aplicar una variación de opacidad para el efecto de pulso
+        ctx.globalAlpha = (0.25 + 0.75 * smoothPulse) * opacity;
         ctx.drawImage(sprite, x - sSize / 2, y - sSize / 2, sSize, sSize);
+        ctx.restore();
 
         // Efecto espiral de partículas verdes
         const numParticles = 30;
-        const time = now * 0.001;
+        const rotationTime = now * 0.0008; // Tiempo para la rotación (más lento que el pulso)
         ctx.fillStyle = obj.color;
-    
+
         for (let i = 0; i < numParticles; i++) {
             const ratio = i / numParticles;
-            const angle = time + (ratio * Math.PI * 2);
+            const angle = rotationTime + (ratio * Math.PI * 2);
             // El radio oscila para crear un efecto de "succión" o espiral dinámico
-            const spiralRadius = (size / 1.4) * (0.8 + 0.2 * Math.sin(time * 1.5 + ratio * Math.PI * 4));
-        
+            const spiralRadius = (size / 1.4) * (0.8 + 0.15 * Math.sin(rotationTime * 1.2 + ratio * Math.PI * 4));
+
             const px = x + Math.cos(angle) * spiralRadius;
             const py = y + Math.sin(angle) * spiralRadius;
-        
-            const pSize = (2.2 + Math.sin(time * 2 + i * 2)) * cameraZoom;
-        
+
+            // Opacidad sincronizada con el pulso general
+            const individualOffset = Math.sin(i * 13.5) * 0.1; 
+            const pOpacity = (0.15 + 0.75 * smoothPulse + individualOffset) * opacity;
+            ctx.globalAlpha = Math.max(0, Math.min(1, pOpacity));
+
+            const pSize = (2.0 + 1.0 * smoothPulse) * cameraZoom;
+
             ctx.font = `${pSize * 3}px monospace`;
             ctx.fillText('@', px, py);
-        
-            // Brillo para algunas partículas exteriores
+
+            // Brillo para algunas partículas exteriores (sincronizado con el pulso)
             if (i % 2 === 0) {
-                ctx.shadowBlur = 25 * cameraZoom;
+                ctx.shadowBlur = (10 + 10 * smoothPulse) * cameraZoom;
                 ctx.shadowColor = obj.color;
                 ctx.fillText('@', px, py);
                 ctx.shadowBlur = 0;
             }
         }
-    
+
         // Partículas interiores rotando en sentido contrario
         const innerParticles = 20;
         for (let i = 0; i < innerParticles; i++) {
             const ratio = i / innerParticles;
-            const angle = -time * 1.2 + (ratio * Math.PI * 2);
-            const spiralRadius = (size / 3) * (1 + 0.3 * Math.cos(time * 0.8 + ratio * Math.PI));
-        
+            const angle = -rotationTime * 1.1 + (ratio * Math.PI * 2);
+            const spiralRadius = (size / 3) * (1 + 0.2 * Math.cos(rotationTime * 0.7 + ratio * Math.PI));
+
             const px = x + Math.cos(angle) * spiralRadius;
             const py = y + Math.sin(angle) * spiralRadius;
-        
-            ctx.globalAlpha = 0.7;
-            ctx.font = `${4 * cameraZoom}px monospace`;
+
+            // Opacidad también sincronizada pero con fase invertida o distinta para dar profundidad
+            const pOpacity = (0.3 + 0.3 * (1.0 - smoothPulse)) * opacity;
+            ctx.globalAlpha = pOpacity;
+            ctx.font = `${3.5 * cameraZoom}px monospace`;
             ctx.fillText('@', px, py);
         }
-    
+
         ctx.restore();
     }
 
     function performScan() {
         if (!myPlayer) return;
-        
+
         const now = Date.now();
         if (now - lastScannerToggleTime < SCANNER_COOLDOWN) return;
         lastScannerToggleTime = now;
-        
+
         isScannerActive = !isScannerActive;
-        
+
         if (isScannerActive) {
             scannerStartTime = now;
             scannerEffects.push(new ScannerEffect(myPlayer.position.x, myPlayer.position.y));
@@ -426,16 +471,16 @@ function updateScannedEntities() {
 
     const now = Date.now();
     const currentScannedMap = new Map(scannedEntities.map(s => [s.id, s]));
-    
+
     scannedEntities = gameState.objects
         .filter(obj => obj.id !== myPlayerId && obj.hp !== 0)
         .map(obj => {
             const dx = obj.position.x - myPlayer.position.x;
             const dy = obj.position.y - myPlayer.position.y;
             const distCells = Math.sqrt(dx * dx + dy * dy);
-            
+
             const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-            let label = obj.name === 'METEORITE' ? 'Meteorite' : 
+            let label = obj.name === 'METEORITE' ? 'Meteorite' :
                         obj.name === 'LARGE_METEORITE' ? 'Heavy Meteorite' :
                         obj.name.includes('METEORITE') ? `Meteorite (${capitalize(obj.name.split('_')[0])})` :
                         obj.name.includes('ORE') ? `Mineral (${capitalize(obj.name.split('_')[0])})` :
@@ -496,11 +541,11 @@ let COLORS = THEMES[currentThemeId];
 function applyTheme(themeId) {
     const theme = THEMES[themeId];
     if (!theme) return;
-    
+
     currentThemeId = themeId;
     COLORS = theme;
     localStorage.setItem('netrunner-theme', themeId);
-    
+
     // Actualizar variables CSS
     const root = document.documentElement;
     root.style.setProperty('--bg', theme.bg);
@@ -513,9 +558,9 @@ function applyTheme(themeId) {
     root.style.setProperty('--warning', theme.warning);
     root.style.setProperty('--muted', theme.muted);
     root.style.setProperty('--grid', theme.grid);
-    
+
     if (themeSelector) themeSelector.textContent = theme.name;
-    
+
     // Regenerar cachés
     initBackgroundCache();
     for (let key in spriteCache) delete spriteCache[key];
@@ -526,7 +571,7 @@ function initBackgroundCache() {
     // bgCanvas ya no se redimensiona al tamaño del mundo
     bgCanvas.width = 1;
     bgCanvas.height = 1;
-    
+
     // Pre-renderizar luz de las estrellas (ahora se hará bajo demanda o de forma más eficiente)
     // starLightCanvas tampoco debe ser gigante. Lo limitamos al tamaño de pantalla.
     starLightCanvas.width = window.innerWidth * LIGHT_SCALE;
@@ -536,16 +581,16 @@ function initBackgroundCache() {
 function getSprite(symbol, color, glowRadius, entitySize = 1) {
     const key = `${symbol}_${color}_${glowRadius}_${entitySize}`;
     if (spriteCache[key]) return spriteCache[key];
-    
+
     const sCanvas = document.createElement('canvas');
     // Aumentamos el tamaño del canvas proporcionalmente al tamaño de la entidad
-    const padding = 15; 
+    const padding = 15;
     const baseSize = CELL_SIZE * entitySize;
     const totalSize = baseSize + padding * 2;
     sCanvas.width = totalSize;
     sCanvas.height = totalSize;
     const sCtx = sCanvas.getContext('2d');
-    
+
     sCtx.shadowBlur = glowRadius;
     sCtx.shadowColor = color;
     sCtx.fillStyle = color;
@@ -555,7 +600,7 @@ function getSprite(symbol, color, glowRadius, entitySize = 1) {
     sCtx.textAlign = 'center';
     sCtx.textBaseline = 'middle';
     sCtx.fillText(symbol, totalSize / 2, totalSize / 2);
-    
+
     spriteCache[key] = sCanvas;
     return sCanvas;
 }
@@ -566,13 +611,13 @@ applyTheme(currentThemeId);
 function log(message) {
     const entry = document.createElement('div');
     entry.className = 'log-entry';
-    
+
     // Parse color codes: [#HEX]Text
     const parts = message.split(/(\[#[0-9a-fA-F]{6}\])/);
     let currentSpan = null;
-    
+
     entry.appendChild(document.createTextNode('> '));
-    
+
     parts.forEach(part => {
         if (part.startsWith('[#') && part.endsWith(']')) {
             const color = part.substring(1, part.length - 1);
@@ -599,7 +644,7 @@ function log(message) {
 function updateResponsiveUI() {
     const mobileNow = checkMobile();
     const guide = document.getElementById('guide-content');
-    
+
     if (guide) {
         if (mobileNow) {
             guide.innerHTML = `<span class="accent">JOYSTICK</span> to move | <span class="accent">FIRE</span> to shoot | <span class="accent">SCAN</span> to scan`;
@@ -607,12 +652,12 @@ function updateResponsiveUI() {
             guide.innerHTML = `<span class="accent">WASD</span> to navigate | <span class="accent">SPACE/CLICK</span> to shoot | <span class="accent">C</span> to scan | <span class="accent">F11</span> full extraction`;
         }
     }
-    
+
     if (mobileNow && !mobileControlsInitialized) {
         initMobileControls();
         mobileControlsInitialized = true;
     }
-    
+
     isMobile = mobileNow;
 }
 
@@ -624,7 +669,7 @@ function resize() {
     // También actualizar starLightCanvas
     starLightCanvas.width = canvas.width * LIGHT_SCALE;
     starLightCanvas.height = canvas.height * LIGHT_SCALE;
-    
+
     updateResponsiveUI();
 }
 
@@ -635,7 +680,7 @@ resize();
 window.addEventListener('wheel', (e) => {
     // Solo zoom si no se está usando el chat
     if (document.activeElement === chatInput) return;
-    
+
     if (e.deltaY < 0) {
         targetZoom = Math.min(MAX_ZOOM, targetZoom * 1.15);
     } else {
@@ -651,28 +696,28 @@ window.addEventListener('mousemove', (e) => {
 window.addEventListener('mousedown', (e) => {
     // Solo disparar si no se está interactuando con elementos del HUD
     if (e.target.closest('.hud-panel')) return;
-    
+
     if (myPlayer && !isScannerActive) {
         // Calcular coordenadas del mundo desde coordenadas de pantalla
         const panX = (mouseX - canvas.width / 2) * MOUSE_PAN_FACTOR;
         const panY = (mouseY - canvas.height / 2) * MOUSE_PAN_FACTOR;
-        
+
         const worldX = (e.clientX - canvas.width / 2 + panX) / (CELL_SIZE * cameraZoom) + myPlayer.position.x + 0.5;
         const worldY = (e.clientY - canvas.height / 2 + panY) / (CELL_SIZE * cameraZoom) + myPlayer.position.y + 0.5;
-        
+
         sendInput('SHOOT', `${worldX.toFixed(2)},${worldY.toFixed(2)}`);
     }
 });
 
 function normalize(data) {
     if (!data || typeof data !== 'object') return data;
-    
+
     const mapping = {
         'o': 'objects', 'ev': 'events', 'ef': 'effects',
         'i': 'id', 'p': 'position', 's': 'symbol', 'c': 'color', 'n': 'name',
         'h': 'hp', 'sh': 'shield', 'co': 'copper', 'si': 'silver', 'go': 'gold',
         'l': 'level', 'li': 'linkedId', 'e': 'exp', 'w': 'weapon', 't': 'type', 'sz': 'size',
-        'pi': 'playerId', 'pn': 'playerName', 'd': 'payload', 'dbg': 'debugData'
+        'pi': 'playerId', 'pn': 'playerName', 'd': 'payload', 'dbg': 'debugData', 'v': 'vibration'
     };
 
     for (const key in mapping) {
@@ -684,13 +729,13 @@ function normalize(data) {
     if (data.objects) data.objects = data.objects.map(normalize);
     if (data.effects) data.effects = data.effects.map(normalize);
     if (data.weapon) data.weapon = normalize(data.weapon);
-    
+
     return data;
 }
 
 function connect() {
     let wsUrl = window.CONFIG && window.CONFIG.WS_URL;
-    
+
     // Si no hay configuración o sigue teniendo el placeholder, intentar autodetección
     if (!wsUrl || wsUrl === 'WS_URL_PLACEHOLDER') {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -722,10 +767,10 @@ function connect() {
         } else {
             data = JSON.parse(event.data);
         }
-        
+
         // Normalizar keys reducidas
         data = normalize(data);
-        
+
         if (data.type === 'WELCOME') {
             myPlayerId = data.playerId;
             playerNameSpan.textContent = data.playerName;
@@ -733,14 +778,28 @@ function connect() {
             return;
         }
 
-        // Medir latencia básica
+        // Medir latencia básica y sincronizar reloj
         const now = Date.now();
+        if (data.timestamp) {
+            // offset = serverTime - clientTime
+            // Un valor positivo significa que el servidor va adelantado
+            serverTimeOffset = data.timestamp - now;
+        }
+
         if (lastMessageTime) {
             latencySpan.textContent = `${now - lastMessageTime}ms`;
         }
         lastMessageTime = now;
 
         gameState = data;
+        
+        // Procesar vibración
+        if (gameState.vibration) {
+            screenShake = Math.min(1.0, screenShake + gameState.vibration);
+            if (gameState.vibration > 0.3 && navigator.vibrate) {
+                navigator.vibrate(Math.floor(gameState.vibration * 200));
+            }
+        }
         
         // Buscar mi jugador inmediatamente para tener datos actualizados para efectos
         if (myPlayerId) {
@@ -1149,6 +1208,13 @@ function render() {
 
         offsetX = canvas.width / 2 - pWorldX * cameraZoom - panX + bobX;
         offsetY = canvas.height / 2 - pWorldY * cameraZoom - panY + bobY;
+    }
+
+    // Aplicar Screen Shake
+    if (screenShake > 0) {
+        const shakeMag = screenShake * 16 * cameraZoom;
+        offsetX += (Math.random() * 2 - 1) * shakeMag;
+        offsetY += (Math.random() * 2 - 1) * shakeMag;
     }
 
     // 2. Dibujar Cuadrícula Dinámica (Optimizado para mundos grandes)
@@ -1779,6 +1845,10 @@ function animLoop() {
 
     if (joystickActive) {
         updateJoystickMovement();
+    }
+
+    if (screenShake > 0) {
+        screenShake = Math.max(0, screenShake - SHAKE_DECAY);
     }
 
     render();
