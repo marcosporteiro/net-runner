@@ -27,68 +27,86 @@
                     </div>
                 </div>
                 <div class="hud-panel stats-panel">
-                    <div class="panel-header" style="text-align: right;">AGENT_METRICS</div>
+                    <div class="panel-header">AGENT_STATUS</div>
                     
-                    <div class="vital-stats">
-                        <div class="stat-group">
-                            <span class="panel-label">HP</span>
-                            <span id="player-hp" class="danger">|||||</span>
+                    <!-- Vitals with actual progress bars -->
+                    <div class="vitals-container">
+                        <div class="stat-row-new">
+                            <div class="label-group">
+                                <span class="panel-label">INTEGRITY</span>
+                                <span id="hp-value" class="stat-value danger">100%</span>
+                            </div>
+                            <div class="progress-container integrity">
+                                <div id="hp-bar" class="progress-fill integrity" style="width: 100%;"></div>
+                            </div>
                         </div>
-                        <div class="stat-group">
-                            <span class="panel-label">SHD</span>
-                            <span id="player-shield" style="color: #bc8cff;">(((</span>
-                        </div>
-                    </div>
-
-                    <div class="progression-stats">
-                        <span class="panel-label">LVL</span>
-                        <span id="player-level" class="accent">1</span>
-                        <span id="player-xp" class="xp-bar">---</span>
-                    </div>
-
-                    <div class="resource-stats">
-                        <div class="stat-item">
-                            <span class="panel-label" style="color: #b87333;">CU</span>
-                            <span id="player-copper">0</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="panel-label" style="color: #c0c0c0;">AG</span>
-                            <span id="player-silver">0</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="panel-label" style="color: #ffd700;">AU</span>
-                            <span id="player-gold">0</span>
+                        <div class="stat-row-new">
+                            <div class="label-group">
+                                <span class="panel-label">SHIELD</span>
+                                <span id="shd-value" class="stat-value" style="color: #bc8cff;">100%</span>
+                            </div>
+                            <div class="progress-container shield">
+                                <div id="shd-bar" class="progress-fill shield" style="width: 100%;"></div>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="combat-stats" style="display: flex; justify-content: flex-end; gap: 8px;">
-                        <span class="panel-label">WPN</span>
-                        <span id="player-weapon" class="accent">BASIC</span>
-                    </div>
-
-                    <div class="engine-stats">
-                        <div class="stat-item">
-                            <span class="panel-label">POS</span>
-                            <span id="player-pos" class="accent">0.0, 0.0</span>
+                    <!-- Level and XP -->
+                    <div class="xp-container-new">
+                        <div class="label-group">
+                            <span class="panel-label">LVL <span id="player-level" class="accent">1</span></span>
+                            <span id="xp-value" class="stat-value warning">0%</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="panel-label">SPD</span>
-                            <span id="player-speed">0.00</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="panel-label">ACC</span>
-                            <span id="player-accel">0.00</span>
+                        <div class="progress-container xp">
+                            <div id="xp-bar-fill" class="progress-fill xp" style="width: 0%;"></div>
                         </div>
                     </div>
 
-                    <div class="system-stats" style="margin-top: 4px; padding-top: 4px; border-top: 1px dotted rgba(48, 54, 61, 0.5);">
-                        <div class="stat-item">
-                            <span class="panel-label">LAT</span>
+                    <!-- Resources - Horizontal and more modern -->
+                    <div class="resource-grid-new">
+                        <div class="res-node copper">
+                            <div class="res-icon">CU</div>
+                            <div id="player-copper" class="res-amount">0</div>
+                        </div>
+                        <div class="res-node silver">
+                            <div class="res-icon">AG</div>
+                            <div id="player-silver" class="res-amount">0</div>
+                        </div>
+                        <div class="res-node gold">
+                            <div class="res-icon">AU</div>
+                            <div id="player-gold" class="res-amount">0</div>
+                        </div>
+                    </div>
+
+                    <!-- Combat & Engine Info -->
+                    <div class="info-grid-new">
+                        <div class="info-item">
+                            <span class="info-label">WEAPON_SYS</span>
+                            <span id="player-weapon" class="info-value accent">BASIC</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">COORDINATES</span>
+                            <span id="player-pos" class="info-value">0.0, 0.0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">VELOCITY</span>
+                            <span id="player-speed" class="info-value">0.00</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">THRUST</span>
+                            <span id="player-accel" class="info-value">0.00</span>
+                        </div>
+                    </div>
+
+                    <!-- System Performance -->
+                    <div class="sys-perf-new">
+                        <div class="perf-item">
                             <span id="latency" class="accent">--ms</span>
+                            <span class="perf-label">LAT</span>
                         </div>
-                        <div class="stat-item">
+                        <div class="perf-item">
                             <span id="fps" class="success">--</span>
-                            <span class="panel-label" style="min-width: unset;">FPS</span>
+                            <span class="perf-label">FPS</span>
                         </div>
                     </div>
                 </div>

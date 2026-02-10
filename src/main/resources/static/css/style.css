@@ -434,68 +434,137 @@ body, html {
     min-width: 220px;
 }
 
-.user-info {
+/* Rediseño Agent Metrics */
+.vitals-container, .xp-container-new {
+    margin-bottom: 12px;
+}
+
+.stat-row-new {
+    margin-bottom: 8px;
+}
+
+.label-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    font-size: 10px;
     font-weight: bold;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 4px;
-    margin-bottom: 2px;
 }
 
-.vital-stats, .resource-stats, .engine-stats {
-    display: flex;
-    justify-content: flex-end;
-    gap: 15px;
-    border-bottom: 1px dotted rgba(48, 54, 61, 0.5);
-    padding-bottom: 4px;
+.progress-container {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
 }
 
-.progression-stats {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progress-fill.integrity { background: var(--danger); box-shadow: 0 0 10px rgba(248, 81, 73, 0.5); }
+.progress-fill.shield { background: #bc8cff; box-shadow: 0 0 10px rgba(188, 140, 255, 0.5); }
+.progress-fill.xp { background: var(--warning); box-shadow: 0 0 10px rgba(210, 153, 34, 0.5); }
+
+.resource-grid-new {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 8px;
-    font-size: 11px;
+    margin: 15px 0;
+    padding: 10px 0;
+    border-top: 1px dotted var(--border);
+    border-bottom: 1px dotted var(--border);
 }
 
-.xp-bar {
-    color: var(--warning);
-}
-
-.system-stats {
-    font-size: 9px;
-    color: var(--muted);
+.res-node {
     display: flex;
-    justify-content: flex-end;
-    gap: 15px;
-    opacity: 0.8;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 4px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    border-radius: 2px;
 }
 
-.system-stats .panel-label {
-    font-size: 8px;
+.res-node:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--border);
+}
+
+.res-icon {
+    font-size: 9px;
+    font-weight: bold;
+    margin-bottom: 2px;
     letter-spacing: 1px;
 }
 
-.stat-group {
+.res-amount {
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.res-node.copper .res-icon { color: #b87333; }
+.res-node.silver .res-icon { color: #c0c0c0; }
+.res-node.gold .res-icon { color: #ffd700; }
+
+.info-grid-new {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.info-item {
     display: flex;
-    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+}
+
+.info-label {
+    color: var(--muted);
+    letter-spacing: 1px;
+    font-size: 9px;
+    text-transform: uppercase;
+}
+
+.info-value {
+    font-weight: bold;
+}
+
+.sys-perf-new {
+    display: flex;
+    justify-content: space-between;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+
+.perf-item {
+    display: flex;
+    align-items: baseline;
     gap: 4px;
 }
 
-.stat-item {
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 0;
+.perf-label {
+    font-size: 8px;
+    color: var(--muted);
+    font-weight: bold;
 }
 
 .panel-label {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: bold;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 1.5px;
-    min-width: 40px;
 }
 
 #mobile-controls {
@@ -629,38 +698,37 @@ body, html {
         width: 180px;
         min-width: unset;
         gap: 4px;
+        padding: 10px 12px;
     }
 
-    .vital-stats, .resource-stats, .engine-stats, .system-stats {
-        gap: 8px;
-        padding-bottom: 2px;
+    .vitals-container, .xp-container-new {
+        margin-bottom: 8px;
+    }
+
+    .resource-grid-new {
+        margin: 8px 0;
+        padding: 5px 0;
+        gap: 4px;
+    }
+
+    .res-amount {
+        font-size: 10px;
+    }
+
+    .info-item {
+        font-size: 9px;
     }
 
     .panel-label {
         font-size: 8px;
-        min-width: 28px;
     }
 
-    .stat-item {
-        font-size: 9px;
+    .stat-value {
+        font-size: 8px;
     }
 
-    .progression-stats {
-        font-size: 9px;
-        justify-content: flex-end;
-    }
-
-    /* Mostrar recursos pero compacto */
-    .resource-stats {
-        display: flex !important;
-        position: static;
-        background: transparent;
-        padding: 0;
-        border: none;
-    }
-
-    .combat-stats, .engine-stats, .system-stats {
-        display: flex !important;
+    .sys-perf-new {
+        padding-top: 4px;
     }
 
     /* Logs: Estilo Desktop pero pequeño */

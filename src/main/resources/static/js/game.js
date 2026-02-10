@@ -3,10 +3,13 @@ const ctx = canvas.getContext('2d');
 const statusSpan = document.getElementById('connection-status');
 const playerNameSpan = document.getElementById('player-name');
 const playerColorIndicator = document.getElementById('player-color-indicator');
-const playerHpSpan = document.getElementById('player-hp');
-const playerShieldSpan = document.getElementById('player-shield');
+const hpBar = document.getElementById('hp-bar');
+const hpValue = document.getElementById('hp-value');
+const shdBar = document.getElementById('shd-bar');
+const shdValue = document.getElementById('shd-value');
 const playerLevelSpan = document.getElementById('player-level');
-const playerXpSpan = document.getElementById('player-xp');
+const xpBarFill = document.getElementById('xp-bar-fill');
+const xpValue = document.getElementById('xp-value');
 const playerCopperSpan = document.getElementById('player-copper');
 const playerSilverSpan = document.getElementById('player-silver');
 const playerGoldSpan = document.getElementById('player-gold');
@@ -1052,23 +1055,42 @@ function connect() {
             playerNameSpan.textContent = myPlayer.name;
                 playerColorIndicator.style.color = myPlayer.color;
                 
-                const hpBars = '|'.repeat(Math.max(0, myPlayer.hp));
-                playerHpSpan.textContent = hpBars || 'REBOOTING...';
-                // El HP en la UI siempre es rojo según el requerimiento
-                playerHpSpan.className = 'danger';
+                // Actualizar Barras de Integridad y Escudo
+                if (hpBar) {
+                    const maxHp = myPlayer.maxHp || 5;
+                    const hpPercent = Math.min(100, Math.max(0, (myPlayer.hp / maxHp) * 100));
+                    hpBar.style.width = `${hpPercent}%`;
+                    if (hpValue) hpValue.textContent = `${Math.ceil(hpPercent)}%`;
+                    
+                    // Alerta visual si el HP es bajo
+                    if (hpPercent < 30) {
+                        hpBar.style.filter = 'brightness(1.5) contrast(1.2)';
+                    } else {
+                        hpBar.style.filter = 'none';
+                    }
+                }
 
-                const shieldBars = '('.repeat(Math.max(0, myPlayer.shield));
-                playerShieldSpan.textContent = shieldBars || 'EMPTY';
+                if (shdBar) {
+                    const maxShield = myPlayer.maxShield || 0;
+                    const shdPercent = maxShield > 0 ? Math.min(100, Math.max(0, (myPlayer.shield / maxShield) * 100)) : 0;
+                    shdBar.style.width = `${shdPercent}%`;
+                    if (shdValue) shdValue.textContent = `${Math.ceil(shdPercent)}%`;
+                    
+                    // Ocultar si no hay escudo máximo (el agente no tiene escudos aún)
+                    if (maxShield <= 0) {
+                        shdBar.parentElement.parentElement.style.display = 'none';
+                    } else {
+                        shdBar.parentElement.parentElement.style.display = 'block';
+                    }
+                }
 
                 if (playerLevelSpan) playerLevelSpan.textContent = myPlayer.level || 1;
-                if (playerXpSpan) {
+                
+                if (xpBarFill) {
                     const expNeeded = (myPlayer.level || 1) * 500;
-                    const xpPercent = Math.floor(((myPlayer.exp || 0) / expNeeded) * 100);
-                    // Usar una barra de progreso visual con caracteres
-                    const barSize = 10;
-                    const filledSize = Math.floor((xpPercent / 100) * barSize);
-                    const bar = '■'.repeat(filledSize) + '□'.repeat(barSize - filledSize);
-                    playerXpSpan.textContent = `${bar} ${xpPercent}%`;
+                    const xpPercent = Math.min(100, Math.floor(((myPlayer.exp || 0) / expNeeded) * 100));
+                    xpBarFill.style.width = `${xpPercent}%`;
+                    if (xpValue) xpValue.textContent = `${xpPercent}%`;
                 }
 
                 playerCopperSpan.textContent = myPlayer.copper;
@@ -1380,7 +1402,7 @@ function render() {
     // 2.0 Pintar celdas de meteoritos y ores
     ctx.globalAlpha = 0.15;
     gameState.objects.forEach(obj => {
-        if (obj.name === 'METEORITE' || obj.name === 'LARGE_METEORITE' || obj.name.includes('ORE')) {
+        if (obj.name.includes('METEORITE') || (obj.name.includes('ORE') && !obj.name.endsWith('_ORE'))) {
             const size = obj.size || 1;
             const x = (obj.position.x - size / 2) * scaledCellSize + offsetX;
             const y = (obj.position.y - size / 2) * scaledCellSize + offsetY;
@@ -1494,8 +1516,19 @@ function render() {
         // Omitir jugadores que están reiniciando
         if (obj.hp === 0) return;
 
-        const x = obj.position.x * CELL_SIZE * cameraZoom + offsetX;
-        const y = obj.position.y * CELL_SIZE * cameraZoom + offsetY;
+        let x = obj.position.x * CELL_SIZE * cameraZoom + offsetX;
+        let y = obj.position.y * CELL_SIZE * cameraZoom + offsetY;
+
+        // Efecto de flotación para ores sueltos (con aleatoriedad por ID)
+        if (obj.name && obj.name.endsWith('_ORE')) {
+            const seed = obj.id.split('-')[0];
+            const offset = parseInt(seed, 16) || 0;
+            const bobTime = (now + offset) * 0.002;
+            const speedMod = 1 + (offset % 100) / 400; // Variación de velocidad ±12.5%
+            
+            x += Math.sin(bobTime * speedMod) * 1.5 * cameraZoom;
+            y += Math.cos(bobTime * 0.8 * speedMod) * 1.5 * cameraZoom;
+        }
 
         // Culling visual
         const cullMargin = (obj.size || 1) * CELL_SIZE * cameraZoom;

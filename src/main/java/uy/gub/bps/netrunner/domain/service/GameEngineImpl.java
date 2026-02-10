@@ -996,7 +996,9 @@ public class GameEngineImpl implements GameEngine {
 
     private synchronized void updateStaticGrid() {
         staticQuadTree.clear();
-        worldObjects.values().forEach(staticQuadTree::insert);
+        worldObjects.values().stream()
+                .filter(obj -> !(obj instanceof Ore))
+                .forEach(staticQuadTree::insert);
     }
 
     private synchronized void updateSpatialGrid() {
@@ -1005,6 +1007,11 @@ public class GameEngineImpl implements GameEngine {
         projectiles.values().forEach(dynamicQuadTree::insert);
         players.values().stream()
                 .filter(p -> p.getRespawnTimer() == 0)
+                .forEach(dynamicQuadTree::insert);
+        
+        // Incluir Ores en el grid dinámico ya que ahora se mueven
+        worldObjects.values().stream()
+                .filter(obj -> obj instanceof Ore)
                 .forEach(dynamicQuadTree::insert);
     }
 
@@ -1226,7 +1233,7 @@ public class GameEngineImpl implements GameEngine {
                         double checkY = oldPos.y() + proj.getVy() * stepFactor;
                         
                         GameObject hitObj = findFirstInDynamicGrid(checkX, checkY, 2.0, o -> {
-                            if (o instanceof Projectile) return false;
+                            if (o instanceof Projectile || o instanceof Ore) return false;
                             if (o.getId().equals(proj.getOwnerId())) return false;
                             if (o instanceof Player p && p.getRespawnTimer() != 0) return false;
 
@@ -1263,6 +1270,27 @@ public class GameEngineImpl implements GameEngine {
         java.util.concurrent.CompletableFuture.allOf(projectileFutures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
         for (UUID id : toRemove) {
             projectiles.remove(id);
+        }
+
+        // Actualizar Ores (Atracción magnética hacia jugadores cercanos)
+        for (GameObject obj : worldObjects.values()) {
+            if (obj instanceof Ore ore) {
+                // Rango de atracción: 1.5 unidades
+                Player nearbyPlayer = (Player) findFirstInDynamicGrid(ore.getPosition().x(), ore.getPosition().y(), 1.5, o -> o instanceof Player);
+                if (nearbyPlayer != null && nearbyPlayer.getRespawnTimer() == 0) {
+                    double dx = nearbyPlayer.getPosition().x() - ore.getPosition().x();
+                    double dy = nearbyPlayer.getPosition().y() - ore.getPosition().y();
+                    double dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 0.1) {
+                        // Velocidad de atracción ligeramente superior a la velocidad máxima del jugador (0.08)
+                        double attractionSpeed = 0.10;
+                        ore.setPosition(new Position(
+                            ore.getPosition().x() + (dx / dist) * attractionSpeed,
+                            ore.getPosition().y() + (dy / dist) * attractionSpeed
+                        ));
+                    }
+                }
+            }
         }
 
         // Actualizar Jugadores (Movimiento e Inercia)
