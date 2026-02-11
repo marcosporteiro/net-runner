@@ -23,7 +23,6 @@ public class Player implements GameObject {
     private String color;
     @JsonProperty("n")
     private String name;
-    private int score;
     @JsonProperty("h")
     private double hp;
     @Builder.Default

@@ -47,6 +47,7 @@ let serverTimeOffset = 0;
 const keysDown = {};
 let particles = [];
 let beams = [];
+let floatingTexts = [];
 let damageFlash = 0;
 let teleportFlash = 0;
 let explosionFlash = 0;
@@ -204,6 +205,57 @@ class Particle {
         ctx.fillStyle = drawColor;
         ctx.font = `${(this.size + 4) * cameraZoom}px monospace`;
         ctx.fillText(this.symbol, this.x * cameraZoom + offsetX, this.y * cameraZoom + offsetY);
+        ctx.restore();
+    }
+}
+
+class FloatingText {
+    constructor(x, y, text, color) {
+        this.x = x * CELL_SIZE;
+        this.y = y * CELL_SIZE;
+        this.text = text;
+        this.color = color;
+        this.life = 1.0;
+        this.decay = 0.012;
+        this.vy = -0.8;
+    }
+
+    update() {
+        this.y += this.vy;
+        this.life -= this.decay;
+        this.vy *= 0.98;
+    }
+
+    draw(ctx, offsetX, offsetY) {
+        if (this.life <= 0) return;
+        const x = this.x * cameraZoom + offsetX;
+        const y = this.y * cameraZoom + offsetY;
+        
+        ctx.save();
+        const alpha = Math.min(1.0, this.life * 4);
+        ctx.globalAlpha = alpha;
+        
+        const fontSize = 11 * cameraZoom;
+        ctx.font = `${fontSize}px ${FONT_MAIN}`;
+        
+        const prefix = "> ";
+        const fullText = prefix + this.text;
+        const metrics = ctx.measureText(fullText);
+        
+        // Text rendering
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        const startX = x - metrics.width / 2;
+        
+        // Prefix in muted color
+        ctx.fillStyle = '#8b949e';
+        ctx.fillText(prefix, startX, y);
+        
+        // Content in themed color
+        const prefixWidth = ctx.measureText(prefix).width;
+        ctx.fillStyle = this.color;
+        ctx.fillText(this.text, startX + prefixWidth, y);
+
         ctx.restore();
     }
 }
@@ -867,7 +919,7 @@ function normalize(data) {
         'co': 'copper', 'si': 'silver', 'go': 'gold',
         'l': 'level', 'li': 'linkedId', 'e': 'exp', 'w': 'weapon', 't': 'type', 'sz': 'size',
         'am': 'autoMinerActive', 'tx': 'targetX', 'ty': 'targetY',
-        'pi': 'playerId', 'pn': 'playerName', 'd': 'payload', 'dbg': 'debugData', 'v': 'vibration'
+        'pi': 'playerId', 'pn': 'playerName', 'd': 'payload', 'dbg': 'debugData', 'v': 'vibration', 'm': 'message'
     };
 
     for (const key in mapping) {
@@ -972,6 +1024,9 @@ function connect() {
         // Procesar efectos visuales
         if (gameState.effects && gameState.effects.length > 0) {
             gameState.effects.forEach(e => {
+                if (e.type === 'TEXT') {
+                    floatingTexts.push(new FloatingText(e.x, e.y, e.message, e.color || '#ffffff'));
+                }
                 let count = 12;
                 let lifeFactor = 1.0;
                 let pattern = 'radial';
@@ -1172,7 +1227,13 @@ function updatePlayerList() {
         // Limitar a los 20 más cercanos
         if (entities.length > 20) entities.length = 20;
     } else {
-        entities.sort((a, b) => (b.score || 0) - (a.score || 0));
+        // Ordenar por Nivel y XP (de mayor a menor)
+        entities.sort((a, b) => {
+            if ((b.level || 0) !== (a.level || 0)) {
+                return (b.level || 0) - (a.level || 0);
+            }
+            return (b.exp || 0) - (a.exp || 0);
+        });
         if (entities.length > 20) entities.length = 20;
     }
     
@@ -1591,7 +1652,7 @@ function render() {
                 isBoss = true;
             }
             
-            const labelText = obj.id === myPlayerId ? `YOU (${obj.score})` : `${labelName} (${obj.score})`;
+            const labelText = obj.id === myPlayerId ? `YOU (${obj.exp} XP)` : `${labelName}`;
             const objHeight = (obj.size || 1) * CELL_SIZE * cameraZoom;
             const labelY = y - objHeight / 2 - 8 * cameraZoom;
             
@@ -1655,6 +1716,9 @@ function render() {
     // 4. Actualizar y dibujar partículas
     particles = particles.filter(p => p.life > 0);
     particles.forEach(p => p.update());
+
+    floatingTexts = floatingTexts.filter(t => t.life > 0);
+    floatingTexts.forEach(t => t.update());
 
     // 4.0 Actualizar y dibujar rayos (Beams)
     beams = beams.filter(b => b.life > 0);
@@ -1882,6 +1946,7 @@ function render() {
 
     // 6. Dibujar partículas (brillantes, sobre la niebla)
     particles.forEach(p => p.draw(ctx, offsetX, offsetY));
+    floatingTexts.forEach(t => t.draw(ctx, offsetX, offsetY));
 
     // 7. Overlay de Muerte
     if (myPlayer && myPlayer.hp === 0) {

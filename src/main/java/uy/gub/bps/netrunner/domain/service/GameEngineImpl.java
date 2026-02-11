@@ -284,7 +284,6 @@ public class GameEngineImpl implements GameEngine {
                 .position(getRandomEmptyPosition(1))
                 .symbol(SYMBOLS[random.nextInt(SYMBOLS.length)])
                 .color(COLORS[random.nextInt(COLORS.length)])
-                .score(0)
                 .hp(5.0)
                 .maxHp(5.0)
                 .shield(0)
@@ -812,6 +811,7 @@ public class GameEngineImpl implements GameEngine {
 
     private void damagePlayer(Player hitPlayer, UUID shooterId, double damage) {
         pendingEffects.add(new VisualEffect("HIT", hitPlayer.getPosition().x(), hitPlayer.getPosition().y(), hitPlayer.getColor()));
+        pendingEffects.add(new VisualEffect("TEXT", hitPlayer.getPosition().x(), hitPlayer.getPosition().y(), "#f85149", String.format("-%.1f", damage)));
         addVibration(hitPlayer.getId(), 0.3);
         double remainingDamage = damage;
         if (hitPlayer.getShield() > 0) {
@@ -829,7 +829,6 @@ public class GameEngineImpl implements GameEngine {
             respawnPlayer(hitPlayer);
             Player shooter = players.get(shooterId);
             if (shooter != null) {
-                shooter.setScore(shooter.getScore() + 500);
                 addExperience(shooter, 100);
                 pendingEvents.add("[" + shooter.getColor() + "]Agent " + shooter.getName() + " [#f85149]terminated [" + hitPlayer.getColor() + "]Agent " + hitPlayer.getName());
             } else {
@@ -840,6 +839,7 @@ public class GameEngineImpl implements GameEngine {
 
     private void damageSentinel(Sentinel sent, UUID shooterId, double damage) {
         pendingEffects.add(new VisualEffect("HIT", sent.getPosition().x(), sent.getPosition().y(), sent.getColor()));
+        pendingEffects.add(new VisualEffect("TEXT", sent.getPosition().x(), sent.getPosition().y(), "#d29922", String.format("-%.1f", damage)));
         
         double remainingDamage = damage;
         if (sent.getShield() > 0) {
@@ -873,9 +873,7 @@ public class GameEngineImpl implements GameEngine {
             Player shooter = players.get(shooterId);
             if (shooter != null) {
                 boolean isAnyBoss = isNull || isFireWall;
-                int scoreGain = isAnyBoss ? 5000 : 300;
                 int expGain = isAnyBoss ? 1000 : 150;
-                shooter.setScore(shooter.getScore() + scoreGain);
                 addExperience(shooter, expGain);
             }
         }
@@ -883,6 +881,7 @@ public class GameEngineImpl implements GameEngine {
 
     private void addExperience(Player player, int amount) {
         player.setExp(player.getExp() + amount);
+        pendingEffects.add(new VisualEffect("TEXT", player.getPosition().x(), player.getPosition().y(), "#58a6ff", "+" + amount + " XP"));
         int expNeeded = Math.max(1, player.getLevel()) * 500;
         if (player.getExp() >= expNeeded) {
             player.setExp(player.getExp() - expNeeded);
@@ -933,6 +932,7 @@ public class GameEngineImpl implements GameEngine {
                     damageSentinel(s, shooterId, damage);
                 } else if (obj instanceof Meteorite met) {
                     met.setHealth(met.getHealth() - damage);
+                    pendingEffects.add(new VisualEffect("TEXT", met.getPosition().x(), met.getPosition().y(), "#c9d1d9", String.format("-%.1f", damage)));
                     if (met.getHealth() <= 0) {
                         destroyMeteorite(met, null);
                     }
@@ -950,13 +950,14 @@ public class GameEngineImpl implements GameEngine {
             if (collector != null) {
                 // Auto-recolección para el láser
                 Ore.OreType type = met.getResourceType();
-                if (type == Ore.OreType.COPPER) collector.setCopper(collector.getCopper() + 1);
-                else if (type == Ore.OreType.SILVER) collector.setSilver(collector.getSilver() + 1);
-                else if (type == Ore.OreType.GOLD) collector.setGold(collector.getGold() + 1);
+                String oreColor = "#ffffff";
+                if (type == Ore.OreType.COPPER) { collector.setCopper(collector.getCopper() + 1); oreColor = "#b87333"; }
+                else if (type == Ore.OreType.SILVER) { collector.setSilver(collector.getSilver() + 1); oreColor = "#c0c0c0"; }
+                else if (type == Ore.OreType.GOLD) { collector.setGold(collector.getGold() + 1); oreColor = "#ffd700"; }
                 
                 addExperience(collector, type.value / 2);
-                collector.setScore(collector.getScore() + type.value);
                 
+                pendingEffects.add(new VisualEffect("TEXT", met.getPosition().x(), met.getPosition().y(), oreColor, "+1 " + type.name()));
                 // Efecto de recolección física (partículas que viajan hacia el jugador)
                 pendingEffects.add(new VisualEffect("COLLECT", met.getPosition().x(), met.getPosition().y(), collector.getPosition().x(), collector.getPosition().y(), "#ff00ff"));
             } else {
@@ -989,6 +990,7 @@ public class GameEngineImpl implements GameEngine {
             if (met.getHealth() <= 0) {
                 destroyMeteorite(met, null);
             } else {
+                pendingEffects.add(new VisualEffect("TEXT", met.getPosition().x(), met.getPosition().y(), "#c9d1d9", String.format("-%.1f", damage)));
                 pendingEffects.add(new VisualEffect("HIT", met.getPosition().x(), met.getPosition().y(), met.getColor()));
             }
         }
@@ -1364,6 +1366,8 @@ public class GameEngineImpl implements GameEngine {
         if (speed > 0.12) damage = 3.0;
         else if (speed > 0.08) damage = 2.0;
 
+        pendingEffects.add(new VisualEffect("TEXT", p.getPosition().x(), p.getPosition().y(), "#f85149", String.format("-%.1f", damage)));
+        
         double remainingDamage = damage;
         if (p.getShield() > 0) {
             double shieldDamage = Math.min(p.getShield(), remainingDamage);
@@ -1393,7 +1397,6 @@ public class GameEngineImpl implements GameEngine {
         player.setVx(0);
         player.setVy(0);
         player.setRespawnTimer(System.currentTimeMillis() + RESPAWN_DELAY);
-        player.setScore(Math.max(0, player.getScore() - 200));
         
         // Limpiar inputs para evitar movimiento automático al aparecer
         activeInputs.remove(player.getId());
@@ -1445,7 +1448,6 @@ public class GameEngineImpl implements GameEngine {
             } else if (obj instanceof DataNode && Math.abs(obj.getPosition().x() - pos.x()) < 0.8 && Math.abs(obj.getPosition().y() - pos.y()) < 0.8) {
                 if (worldObjects.remove(obj.getId()) != null) {
                     staticObjectsChanged = true;
-                    player.setScore(player.getScore() + 100);
                     addExperience(player, 25);
                     pendingEffects.add(new VisualEffect("COLLECT", obj.getPosition().x(), obj.getPosition().y(), obj.getColor()));
                     spawnDataNode();
@@ -1453,13 +1455,14 @@ public class GameEngineImpl implements GameEngine {
             } else if (obj instanceof Ore ore && Math.abs(obj.getPosition().x() - pos.x()) < 0.8 && Math.abs(obj.getPosition().y() - pos.y()) < 0.8) {
                 if (worldObjects.remove(obj.getId()) != null) {
                     staticObjectsChanged = true;
-                    if (ore.getType() == Ore.OreType.COPPER) player.setCopper(player.getCopper() + 1);
-                    else if (ore.getType() == Ore.OreType.SILVER) player.setSilver(player.getSilver() + 1);
-                    else if (ore.getType() == Ore.OreType.GOLD) player.setGold(player.getGold() + 1);
+                    String oreColor = "#ffffff";
+                    if (ore.getType() == Ore.OreType.COPPER) { player.setCopper(player.getCopper() + 1); oreColor = "#b87333"; }
+                    else if (ore.getType() == Ore.OreType.SILVER) { player.setSilver(player.getSilver() + 1); oreColor = "#c0c0c0"; }
+                    else if (ore.getType() == Ore.OreType.GOLD) { player.setGold(player.getGold() + 1); oreColor = "#ffd700"; }
                     
                     addExperience(player, ore.getType().value / 2);
                     
-                    player.setScore(player.getScore() + ore.getType().value);
+                    pendingEffects.add(new VisualEffect("TEXT", obj.getPosition().x(), obj.getPosition().y(), oreColor, "+1 " + ore.getType().name()));
                     pendingEffects.add(new VisualEffect("COLLECT", obj.getPosition().x(), obj.getPosition().y(), obj.getColor()));
                 }
             } else if (obj instanceof Wormhole wh) {

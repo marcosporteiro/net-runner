@@ -9,15 +9,19 @@ public record VisualEffect(
     @JsonProperty("tx") Double tx,
     @JsonProperty("ty") Double ty,
     @JsonProperty("c") String color,
-    @JsonProperty("sz") Integer size
+    @JsonProperty("sz") Integer size,
+    @JsonProperty("m") String message
 ) {
     public VisualEffect(String type, double x, double y, String color) {
-        this(type, x, y, null, null, color, 1);
+        this(type, x, y, null, null, color, 1, null);
     }
     public VisualEffect(String type, double x, double y, String color, int size) {
-        this(type, x, y, null, null, color, size);
+        this(type, x, y, null, null, color, size, null);
     }
     public VisualEffect(String type, double x, double y, double tx, double ty, String color) {
-        this(type, x, y, tx, ty, color, 1);
+        this(type, x, y, tx, ty, color, 1, null);
+    }
+    public VisualEffect(String type, double x, double y, String color, String message) {
+        this(type, x, y, null, null, color, 1, message);
     }
 }
